@@ -28,11 +28,15 @@ usage() {
 usage: bash install.sh [options]
 
   --rime-dir DIR     Rime user folder (default: $RIME_DIR, else ~/Library/Rime)
-  --ref TAG          version (tag/branch) of githubhjs/cangjie-fluency to download missing files from (default: v0.4.0)
+  --ref TAG          version (tag/branch) of githubhjs/cangjie-fluency to download missing files from (default: v0.5.0)
   --offline          never touch the network: everything must be next to this script (full release zip layout)
   --no-deps          do not install Squirrel when it is missing (that needs sudo and the Squirrel pkg)
   --with-cangjie5    also install the 5th-generation schema cangjie5_fluency (+ cangjie5.base.dict.yaml)
   --no-model         do not install the 41 MB language model (zh-hant-t-essay-bgw.gram)
+  --no-fuzzy         do not install the adjacent-key typo tolerance schemas (cangjie3_fuzzy)
+  --fuzzy-default    make the typo-tolerant schema the FIRST (default) one instead of cangjie3_fluency
+  --fuzzy-range narrow|normal|wide   how far a wrong key may be from the right one: narrow = left/right only,
+                     normal (default) = also the diagonal neighbours, wide = one more ring
   --no-deploy        install files only; do not ask Squirrel to redeploy
   --dry-run          show what would be done; change nothing, download nothing
   --uninstall        remove the files this installer created (backups and your default.custom.yaml are kept)
@@ -43,11 +47,15 @@ USAGE
 用法：bash install.sh [選項]
 
   --rime-dir DIR     Rime 使用者資料夾（預設：$RIME_DIR，否則 ~/Library/Rime）
-  --ref TAG          缺少檔案時，從 githubhjs/cangjie-fluency 下載的版本（標籤/分支，預設：v0.4.0）
+  --ref TAG          缺少檔案時，從 githubhjs/cangjie-fluency 下載的版本（標籤/分支，預設：v0.5.0）
   --offline          完全不連網：所有檔案都必須放在本腳本旁邊（完整 release zip 的版面配置）
   --no-deps          Squirrel 不存在時不安裝（安裝需要 sudo 與 Squirrel pkg）
   --with-cangjie5    同時安裝五代方案 cangjie5_fluency（+ cangjie5.base.dict.yaml）
   --no-model         不安裝 41 MB 的語言模型（zh-hant-t-essay-bgw.gram）
+  --no-fuzzy         不安裝相鄰鍵容錯方案（cangjie3_fuzzy）
+  --fuzzy-default    把鄰鍵容錯方案排在第一個（預設），而不是 cangjie3_fluency
+  --fuzzy-range narrow|normal|wide   打錯的鍵離正確的鍵多遠算數：narrow = 只有左右相鄰，
+                     normal（預設）= 再加斜向相鄰，wide = 再多一圈
   --no-deploy        只安裝檔案；不要求 Squirrel 重新部署
   --dry-run          只顯示會做什麼；不更動、不下載
   --uninstall        移除本安裝程式建立的檔案（備份檔與你的 default.custom.yaml 會保留）
@@ -211,6 +219,10 @@ for my $j ($key + 1 .. $#lines) {
 }
 my @missing = grep { !$listed{$_} } @ids;
 if (!@missing) { print "already\n"; exit 0; }
+# typo-tolerant ids go right after their base schema (never becoming the default) unless --fuzzy-default
+my @special = $ENV{CJF_FUZZY_DEFAULT} ? () : grep { /_fuzzy\z/ } @missing;
+my %is_special = map { $_ => 1 } @special;
+@missing = grep { !$is_special{$_} } @missing;
 $indent = $kind . '  ' unless defined $indent;
 my $new = '';
 for my $id (@missing) {
@@ -219,7 +231,20 @@ for my $id (@missing) {
 }
 my @res = @lines;
 $res[$key] .= $eol if $res[$key] !~ /\n\z/;     # key line was the last line without newline
-splice(@res, $key + 1, 0, $new);
+splice(@res, $key + 1, 0, $new) if @missing;
+@res = split(/(?<=\n)/, join('', @res));
+for my $id (@special) {
+    (my $base = $id) =~ s/_fuzzy\z/_fluency/;
+    my $at = $key;
+    for my $j ($key + 1 .. $#res) {
+        my $t = $res[$j];
+        $t =~ s/#.*\z//;
+        if ($t =~ /\A[ \t]*-/ && $t =~ /(?<![A-Za-z0-9_])\Q$base\E(?![A-Za-z0-9_])/) { $at = $j; last; }
+    }
+    my $ln = defined $brace_in ? $indent . '- {' . $brace_in . 'schema: ' . $id . $brace_in . '}' . $eol : $indent . '- schema: ' . $id . $eol;
+    $res[$at] .= $eol if $res[$at] !~ /\n\z/;
+    splice(@res, $at + 1, 0, $ln);
+}
 open(my $o, '>:raw', $out) or die "cannot write $out: $!\n";
 print {$o} join('', @res);
 close($o) or die "cannot close $out: $!\n";
@@ -231,8 +256,8 @@ PERL
 
 main() {
   RIME_DIR="${RIME_DIR:-$HOME/Library/Rime}"
-  REF="${CJF_REF:-v0.4.0}"
-  WITH_C5=0; NO_MODEL=0; NO_DEPLOY=0; NO_DEPS=0; OFFLINE=0; DRY=0; UNINSTALL=0
+  REF="${CJF_REF:-v0.5.0}"
+  WITH_C5=0; NO_FUZZY=0; FUZZY_DEFAULT=0; FUZZY_RANGE=normal; NO_MODEL=0; NO_DEPLOY=0; NO_DEPS=0; OFFLINE=0; DRY=0; UNINSTALL=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --rime-dir)       [ $# -ge 2 ] || die "--rime-dir needs a folder" "--rime-dir 需要一個資料夾"; RIME_DIR="$2"; shift ;;
@@ -243,6 +268,9 @@ main() {
       --no-deps)        NO_DEPS=1 ;;
       --with-cangjie5)  WITH_C5=1 ;;
       --no-model)       NO_MODEL=1 ;;
+      --no-fuzzy)       NO_FUZZY=1 ;;
+      --fuzzy-default)  FUZZY_DEFAULT=1 ;;
+      --fuzzy-range)    shift; FUZZY_RANGE="${1:-}"; case "$FUZZY_RANGE" in narrow|normal|wide) ;; *) die "--fuzzy-range must be narrow, normal or wide" "--fuzzy-range 只能是 narrow、normal 或 wide" ;; esac ;;
       --no-deploy)      NO_DEPLOY=1 ;;
       --dry-run)        DRY=1 ;;
       --uninstall)      UNINSTALL=1 ;;
@@ -328,13 +356,16 @@ main() {
 
   # ---- schema files + essay.txt + table + converter
   SCHEMA_FILES="cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml"
+  if [ "$NO_FUZZY" = 0 ]; then SCHEMA_FILES="$SCHEMA_FILES cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml"; fi
   if [ "$WITH_C5" = 1 ]; then SCHEMA_FILES="$SCHEMA_FILES cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml"; fi
+  if [ "$WITH_C5" = 1 ] && [ "$NO_FUZZY" = 0 ]; then SCHEMA_FILES="$SCHEMA_FILES cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml"; fi
   if [ "$DRY" = 1 ]; then
     for f in $SCHEMA_FILES; do say "DRY: would install $f" "試跑：將會安裝 $f"; done
     say "DRY: would convert tables/mscj3.cin (SHA-256 checked) with tools/cin2rime.pl and data/essay.txt weights -> $RIME_DIR/cangjie3.base.dict.yaml" "試跑：將會用 tools/cin2rime.pl 與 data/essay.txt 的權重轉換 tables/mscj3.cin（已檢查 SHA-256）-> $RIME_DIR/cangjie3.base.dict.yaml"
   else
     for f in $SCHEMA_FILES; do
-      get_src "weasel/$f" "$TMP/$f"
+      rel="weasel/$f"; case "$f" in *_fuzzy*) [ "$FUZZY_RANGE" = normal ] || rel="weasel/fuzzy-$FUZZY_RANGE/$f" ;; esac
+      get_src "$rel" "$TMP/$f"
       grep -q 'name:' "$TMP/$f" || die "$f does not look like a Rime yaml file" "$f 看起來不是 Rime 的 yaml 檔"
       place_file "$TMP/$f" "$f"
     done
@@ -386,8 +417,13 @@ main() {
   fi
 
   # ---- default.custom.yaml
-  IDS="cangjie3_fluency"
-  if [ "$WITH_C5" = 1 ]; then IDS="$IDS cangjie5_fluency"; fi
+  if [ "$FUZZY_DEFAULT" = 1 ] && [ "$NO_FUZZY" = 0 ]; then
+    IDS="cangjie3_fuzzy"; if [ "$WITH_C5" = 1 ]; then IDS="$IDS cangjie5_fuzzy"; fi
+    IDS="$IDS cangjie3_fluency"; if [ "$WITH_C5" = 1 ]; then IDS="$IDS cangjie5_fluency"; fi
+  else
+    IDS="cangjie3_fluency"; if [ "$NO_FUZZY" = 0 ]; then IDS="$IDS cangjie3_fuzzy"; fi
+    if [ "$WITH_C5" = 1 ]; then IDS="$IDS cangjie5_fluency"; if [ "$NO_FUZZY" = 0 ]; then IDS="$IDS cangjie5_fuzzy"; fi; fi
+  fi
   DC="$RIME_DIR/default.custom.yaml"
   if [ ! -f "$DC" ]; then
     {
@@ -398,7 +434,7 @@ main() {
     if [ "$DRY" = 1 ]; then say "DRY: would create default.custom.yaml (cangjie3_fluency first)" "試跑：將會建立 default.custom.yaml（cangjie3_fluency 排在最前面）"
     else place_file "$TMP/default.custom.yaml" "default.custom.yaml"; fi
   else
-    st=$(patch_schema_list "$DC" "$TMP/default.custom.new" $IDS) || die "could not analyse $DC" "無法分析 $DC"
+    st=$(CJF_FUZZY_DEFAULT="$FUZZY_DEFAULT" patch_schema_list "$DC" "$TMP/default.custom.new" $IDS) || die "could not analyse $DC" "無法分析 $DC"
     case "$st" in
       already) say "default.custom.yaml already lists: $IDS" "default.custom.yaml 已列出：$IDS" ;;
       patched)

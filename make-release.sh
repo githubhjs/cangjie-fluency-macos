@@ -19,7 +19,7 @@ STAGE="$(mktemp -d "${TMPDIR:-/tmp}/cjf-rel.XXXXXX")"; trap 'rm -rf "$STAGE"' EX
 sha256() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi; }
 need() { [ -f "$MAIN/$1" ] || { echo "missing in main repo checkout: $1" >&2; exit 1; }; }
 for f in weasel/cangjie3_fluency.schema.yaml weasel/cangjie3_fluency.dict.yaml weasel/cangjie5_fluency.schema.yaml \
-         weasel/cangjie5_fluency.dict.yaml tools/cin2rime.pl tables/mscj3.cin tables/cangjie5.base.dict.yaml tables/SHA256SUMS \
+         weasel/cangjie5_fluency.dict.yaml weasel/cangjie3_fuzzy.schema.yaml weasel/cangjie3_fuzzy_prism.schema.yaml weasel/cangjie5_fuzzy.schema.yaml weasel/cangjie5_fuzzy_prism.schema.yaml weasel/fuzzy-narrow/cangjie3_fuzzy.schema.yaml weasel/fuzzy-narrow/cangjie3_fuzzy_prism.schema.yaml weasel/fuzzy-narrow/cangjie5_fuzzy.schema.yaml weasel/fuzzy-narrow/cangjie5_fuzzy_prism.schema.yaml weasel/fuzzy-wide/cangjie3_fuzzy.schema.yaml weasel/fuzzy-wide/cangjie3_fuzzy_prism.schema.yaml weasel/fuzzy-wide/cangjie5_fuzzy.schema.yaml weasel/fuzzy-wide/cangjie5_fuzzy_prism.schema.yaml tools/cin2rime.pl tables/mscj3.cin tables/cangjie5.base.dict.yaml tables/SHA256SUMS \
          tables/README.md data/essay.txt data/zh-hant-t-essay-bgw.gram data/SHA256SUMS data/README.md \
          dl/Squirrel-1.1.2.pkg dl/NOTICE-third-party.txt dl/squirrel-LICENSE.txt; do need "$f"; done
 
@@ -34,7 +34,9 @@ build() { # build full|slim
   mkdir -p "$d/weasel" "$d/tools"
   cp "$HERE/install.sh" "$HERE/README.md" "$HERE/LICENSE" "$d/"
   chmod +x "$d/install.sh"
-  for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml; do cp "$MAIN/weasel/$f" "$d/weasel/"; done
+  for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml \
+           cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do cp "$MAIN/weasel/$f" "$d/weasel/"; done
+  for rg in narrow wide; do mkdir -p "$d/weasel/fuzzy-$rg"; for f in cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do cp "$MAIN/weasel/fuzzy-$rg/$f" "$d/weasel/fuzzy-$rg/"; done; done
   cp "$MAIN/tools/cin2rime.pl" "$d/tools/"
   if [ "$kind" = full ]; then
     mkdir -p "$d/tables" "$d/data" "$d/deps"

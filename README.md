@@ -72,7 +72,7 @@ The zip holds the installer, schema files, tables, word list, the language model
 
 選項：`--offline`（不連網；檔案必須放在 `install.sh` 旁邊）、`--no-deps`（缺 Squirrel 時不安裝它）、
 `--rime-dir DIR`（預設 `~/Library/Rime`，或 `$RIME_DIR`）、`--ref TAG`（缺少的檔案要從主倉庫哪個版本下載，
-預設 `v0.4.0`）、`--with-cangjie5`、`--no-model`、`--no-deploy`、`--dry-run`、`--uninstall`。
+預設 `v0.5.0`）、`--with-cangjie5`、`--no-model`、`--no-deploy`、`--dry-run`、`--uninstall`。
 
 安裝腳本只需要 bash、`/usr/bin/perl`、awk，以及（沒有 `--offline` 時）curl，這些 macOS 都內建。它會：
 
@@ -114,7 +114,7 @@ bash install.sh
 
 Options: `--offline` (no network; files must be next to `install.sh`), `--no-deps` (do not install Squirrel when it is missing),
 `--rime-dir DIR` (default `~/Library/Rime`, or `$RIME_DIR`), `--ref TAG` (version of the main repo to download missing files
-from, default `v0.4.0`), `--with-cangjie5`, `--no-model`, `--no-deploy`, `--dry-run`, `--uninstall`.
+from, default `v0.5.0`), `--with-cangjie5`, `--no-model`, `--no-deploy`, `--dry-run`, `--uninstall`.
 
 The installer needs only bash, `/usr/bin/perl`, awk and (unless `--offline`) curl, all of which ship with macOS. It:
 
@@ -356,7 +356,7 @@ bash install.sh
 並只在你現有的 `schema_list` 最前面插入 `- schema: cangjie3_fluency`；沒有 `schema_list` 就不動它，只告訴你要加什麼）→ 請 Squirrel 重新部署。
 重複執行是安全的：內容相同的檔案不會重寫、不會備份。
 
-選項：`--offline`、`--no-deps`、`--rime-dir DIR`、`--ref TAG`（預設 `v0.4.0`）、`--with-cangjie5`、`--no-model`、`--no-deploy`、`--dry-run`、`--uninstall`。
+選項：`--offline`、`--no-deps`、`--rime-dir DIR`、`--ref TAG`（預設 `v0.5.0`）、`--with-cangjie5`、`--no-model`、`--no-deploy`、`--dry-run`、`--uninstall`。
 
 **第一次裝好 Squirrel 之後要手動加入輸入法**：系統設定 > 鍵盤 > 文字輸入 > 輸入方式 > 編輯… > `+` > 中文（繁體）> Squirrel（鼠鬚管）。
 在 macOS 26.5.2 上用指令註冊會顯示成功但選單裡不會出現，所以手動加入這一步是必要的。（Squirrel 官方說明：只有初次安裝後在部分應用程式打不出字時，才需要登出再登入。）
@@ -410,3 +410,13 @@ Squirrel 本身不會移除。你自己的 `default.custom.yaml` 不會被改回
 原型（rime-quick#2），以及 [cangjie-system/rime-cangjie-integrated](https://github.com/cangjie-system/rime-cangjie-integrated)（MIT）。
 Squirrel（GPL-3.0）由 Rime 專案開發；完整包與 `deps-v1` release 中的安裝包是未修改的上游 1.1.2。
 碼表、詞彙表、語言模型的來源與授權：主倉庫的 `tables/README.md`、`data/README.md`。本倉庫授權：LGPL-3.0，見 `LICENSE`。
+
+## 鄰鍵容錯（隨附，預設不啟用）/ Adjacent-key typo tolerance (included, not the default)
+
+安裝時會一併裝入「鄰鍵容錯」方案 `cangjie3_fuzzy`（有選五代時還有 `cangjie5_fuzzy`），排在清單第二位；預設方案仍是 `cangjie3_fluency`。打錯一個相鄰按鍵（例如把 `yhmbc` 打成 `yhmbv`）時，也會列出「顏」，正確的候選永遠排在最前面。
+選項：`--no-fuzzy` 不裝；`--fuzzy-range narrow|normal|wide` 範圍；`--fuzzy-default` 讓它排第一。
+想要它變成預設方案（不必按 Ctrl+` 或 F4 切換），請改用獨立專案 **cangjie-fuzzy-macos**（同樣內含完整的 cj*fluency，一行指令安裝）。依據與預設值：<https://github.com/githubhjs/cangjie-fuzzy-core/blob/main/DEFAULTS.md>
+
+The adjacent-key schema `cangjie3_fuzzy` (and `cangjie5_fuzzy` with Cangjie 5) is installed too, listed second; `cangjie3_fluency` stays the default. When one key is wrong and it is a physical neighbour (`yhmbv` for `yhmbc`) the intended character is offered as well, and exact candidates always come first.
+Options: `--no-fuzzy` skip it; `--fuzzy-range narrow|normal|wide` range; `--fuzzy-default` list it first.
+To make it the default schema (no Ctrl+` / F4 needed) use the separate project **cangjie-fuzzy-macos** (it contains the full cj*fluency too; one-line install). Evidence for the defaults: the DEFAULTS.md linked above.

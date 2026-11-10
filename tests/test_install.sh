@@ -92,19 +92,19 @@ dc_case() { # NAME  -> new env with a prepared default.custom.yaml (content in $
 }
 printf '%s\n' '# my config' 'patch:' '  schema_list:' '    - schema: luna_pinyin' '    - schema: cangjie5' '  menu/page_size: 7' > "$W/dc.in"
 dc_case dc_lf
-printf '%s\n' '# my config' 'patch:' '  schema_list:' '    - schema: cangjie3_fluency' '    - schema: luna_pinyin' '    - schema: cangjie5' '  menu/page_size: 7' > "$W/dc.want"
+printf '%s\n' '# my config' 'patch:' '  schema_list:' '    - schema: cangjie3_fluency' '    - schema: cangjie3_fuzzy' '    - schema: luna_pinyin' '    - schema: cangjie5' '  menu/page_size: 7' > "$W/dc.want"
 check "LF: inserted first, indentation kept, rest untouched" cmp -s "$W/dc.want" "$RD/default.custom.yaml"
 check "LF: exactly one backup of default.custom.yaml" test "$(ls "$RD" | grep -c '^default.custom.yaml.bak-')" = 1
 check "LF: backup equals the original" cmp -s "$W/dc.in" "$RD"/default.custom.yaml.bak-*
 
 printf '# my config\r\npatch:\r\n  schema_list:\r\n    - schema: luna_pinyin\r\n    - schema: cangjie5' > "$W/dc.in"
 dc_case dc_crlf
-printf '# my config\r\npatch:\r\n  schema_list:\r\n    - schema: cangjie3_fluency\r\n    - schema: luna_pinyin\r\n    - schema: cangjie5' > "$W/dc.want"
+printf '# my config\r\npatch:\r\n  schema_list:\r\n    - schema: cangjie3_fluency\r\n    - schema: cangjie3_fuzzy\r\n    - schema: luna_pinyin\r\n    - schema: cangjie5' > "$W/dc.want"
 check "CRLF, no trailing newline: CRLF kept, no newline added" cmp -s "$W/dc.want" "$RD/default.custom.yaml"
 
 printf '%s\n' 'patch:' '  schema_list:' '    - {schema: luna_pinyin}' '    - {schema: cangjie5}' > "$W/dc.in"
 dc_case dc_brace
-printf '%s\n' 'patch:' '  schema_list:' '    - {schema: cangjie3_fluency}' '    - {schema: luna_pinyin}' '    - {schema: cangjie5}' > "$W/dc.want"
+printf '%s\n' 'patch:' '  schema_list:' '    - {schema: cangjie3_fluency}' '    - {schema: cangjie3_fuzzy}' '    - {schema: luna_pinyin}' '    - {schema: cangjie5}' > "$W/dc.want"
 check "brace style kept" cmp -s "$W/dc.want" "$RD/default.custom.yaml"
 
 printf '%s\n' 'patch:' '  menu/page_size: 7' > "$W/dc.in"
@@ -114,15 +114,42 @@ check "no schema_list: no backup" test "$(ls "$RD" | grep -c '^default.custom.ya
 check "no schema_list: tells the user what to add" sh -c "printf '%s' \"\$1\" | grep -q -- '- schema: cangjie3_fluency'" _ "$OUT"
 check "no schema_list: installer still succeeded" test "$RC" = 0
 
-printf '%s\n' 'patch:' '  schema_list:' '    - schema: luna_pinyin' '    - schema: cangjie3_fluency' > "$W/dc.in"
+printf '%s\n' 'patch:' '  schema_list:' '    - schema: luna_pinyin' '    - schema: cangjie3_fluency' '    - schema: cangjie3_fuzzy' > "$W/dc.in"
 dc_case dc_already
 check "already listed: untouched" cmp -s "$W/dc.in" "$RD/default.custom.yaml"
 check "already listed: no backup" test "$(ls "$RD" | grep -c '^default.custom.yaml.bak-')" = 0
 
 printf '%s\n' 'patch:' '  schema_list:' '    - schema: cangjie5_fluency' '    - schema: luna_pinyin' > "$W/dc.in"
 dc_case dc_c5only
-printf '%s\n' 'patch:' '  schema_list:' '    - schema: cangjie3_fluency' '    - schema: cangjie5_fluency' '    - schema: luna_pinyin' > "$W/dc.want"
+printf '%s\n' 'patch:' '  schema_list:' '    - schema: cangjie3_fluency' '    - schema: cangjie3_fuzzy' '    - schema: cangjie5_fluency' '    - schema: luna_pinyin' > "$W/dc.want"
 check "only cangjie5_fluency listed: cangjie3_fluency added first (exact id match)" cmp -s "$W/dc.want" "$RD/default.custom.yaml"
+
+echo "== 4b. fuzzy: files, order, options"
+new_env fz1; run --with-cangjie5 --no-model --no-deploy --offline
+for f in cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do
+  check "fuzzy: $f installed byte-identical to the repo copy" cmp -s "$MAIN/weasel/$f" "$RD/$f"
+done
+check "fuzzy default order: fluency first, fuzzy second" test "$(grep -- '- schema:' "$RD/default.custom.yaml" | head -4 | tr -d ' \n')" = "-schema:cangjie3_fluency-schema:cangjie3_fuzzy-schema:cangjie5_fluency-schema:cangjie5_fuzzy"
+new_env fz2; run --with-cangjie5 --no-model --no-deploy --offline --fuzzy-default
+check "--fuzzy-default fresh: fuzzy first" test "$(grep -- '- schema:' "$RD/default.custom.yaml" | head -4 | tr -d ' \n')" = "-schema:cangjie3_fuzzy-schema:cangjie5_fuzzy-schema:cangjie3_fluency-schema:cangjie5_fluency"
+printf '%s\n' 'patch:' '  schema_list:' '    - schema: cangjie3_fluency' '    - schema: luna_pinyin' > "$W/dc.in"
+new_env fz3; cp "$W/dc.in" "$RD/default.custom.yaml"; run --no-model --no-deploy --offline --fuzzy-default
+check "--fuzzy-default existing list: fuzzy at the top" test "$(grep -- '- schema:' "$RD/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fuzzy-schema:cangjie3_fluency-schema:luna_pinyin"
+new_env fz4; cp "$W/dc.in" "$RD/default.custom.yaml"; run --no-model --no-deploy --offline
+check "default existing list: fuzzy right after fluency" test "$(grep -- '- schema:' "$RD/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fluency-schema:cangjie3_fuzzy-schema:luna_pinyin"
+new_env fz5; run --no-model --no-deploy --offline --no-fuzzy
+check "--no-fuzzy: no fuzzy files" test -z "$(ls "$RD" | grep fuzzy)"
+check "--no-fuzzy: no fuzzy id in the list" test -z "$(grep fuzzy "$RD/default.custom.yaml")"
+
+echo "== 4c. fuzzy range"
+for rg in narrow wide; do
+  new_env rg_$rg; run --with-cangjie5 --no-model --no-deploy --offline --fuzzy-range $rg
+  for f in cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do
+    check "--fuzzy-range $rg: $f is the $rg copy" cmp -s "$MAIN/weasel/fuzzy-$rg/$f" "$RD/$f"
+  done
+done
+new_env rg_bad; run --no-model --no-deploy --offline --fuzzy-range huge
+check "--fuzzy-range huge is refused" test "$RC" != 0
 
 printf '%s\n' 'patch:' '  schema_list:' '    # - schema: cangjie3_fluency' '    - schema: luna_pinyin' > "$W/dc.in"
 dc_case dc_comment
