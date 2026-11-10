@@ -29,8 +29,13 @@ brew install --cask squirrel-app
 ```
 
 (The cask is called `squirrel-app`; `squirrel` is only an old alias. No Homebrew: download `Squirrel-<version>.pkg` from
-<https://github.com/rime/squirrel/releases>.) Then add Squirrel under System Settings > Keyboard > Input Sources
-(Chinese, Traditional) and log out and in once.
+<https://github.com/rime/squirrel/releases>.) Then add Squirrel under System Settings > Keyboard > Text Input >
+Input Sources > Edit... > `+` > **Chinese, Traditional** > Squirrel (鼠鬚管), and log out and in once. Squirrel has two input
+modes, `...Squirrel.Hans` (Simplified) and `...Squirrel.Hant` (Traditional); the Traditional one is the one to add.
+**Tested on macOS 26.5.2:** installing the package and running `Squirrel --register-input-source` / `--enable-input-source`
+(also through `launchctl asuser`) printed "succeeds", but Squirrel did **not** appear in the input menu and nothing was written to
+`com.apple.HIToolbox`. Adding it by hand in System Settings is the step that matters (exact menu names on your macOS version
+are unverified here: the Settings UI changes between releases).
 
 Then, one line:
 
