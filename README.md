@@ -9,7 +9,8 @@ auto-corrects as you type; Enter commits the sentence.
   (Windows / Weasel, same files). This repo only contains the macOS installer. The installer downloads the schema files
   from the main repo at a pinned tag (default `v0.2.0`), so there is a single source of truth.
 * Status: **install, table conversion and deploy were run on a real Mac (macOS 26.5.2, Apple silicon, Squirrel 1.1.2, 2026-11-10);
-  typing in Squirrel with this schema has not been confirmed yet.** See
+  the owner then typed with it in Squirrel and got the right characters (顏值, 頻率: reported, no log kept); the
+  `use grammar` log line is not confirmed yet.** See
   [Verified / unverified](#verified--unverified) and `docs/test-log.md`.
 
 ## What you get
@@ -145,8 +146,10 @@ Verified on a real Mac (macOS 26.5.2, arm64, `/bin/bash` 3.2.57, `/usr/bin/perl`
 
 Still unverified:
 
-* Typing with `cangjie3_fluency` in a real Squirrel session, and therefore the `use grammar` / `failed to load grammar` log lines
-  (they are written when a session loads the schema). Please check: log in, type, then
+* Typing with `cangjie3_fluency` in a real Squirrel session **was done by the owner** (2026-11-10, after adding Squirrel by hand in
+  System Settings): 顏值 and 頻率 came out as the right characters. What is still unconfirmed is the `use grammar` /
+  `failed to load grammar` log line: glog buffers the INFO file, so it may only appear after Squirrel has run a while or quit
+  (on Linux it appeared only after the engine stopped). Please check: type, then, if nothing shows up, `Squirrel --quit` and run
   `grep -h -E "use grammar|failed to load grammar" "${TMPDIR%/}"/rime.squirrel/*`.
 * Whether a gram in `~/Library/Rime` takes precedence over the one inside the app bundle (assumed; the Linux test found the model in
   the user folder when the shared folder had none).
