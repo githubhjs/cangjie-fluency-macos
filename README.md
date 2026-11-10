@@ -8,7 +8,8 @@ auto-corrects as you type; Enter commits the sentence.
 * The schema itself lives in the main repo, [githubhjs/cangjie-fluency](https://github.com/githubhjs/cangjie-fluency)
   (Windows / Weasel, same files). This repo only contains the macOS installer. The installer downloads the schema files
   from the main repo at a pinned tag (default `v0.2.0`), so there is a single source of truth.
-* Status: **written and tested on Linux only. Nothing in this repo has been run on a Mac yet.** See
+* Status: **install, table conversion and deploy were run on a real Mac (macOS 26.5.2, Apple silicon, Squirrel 1.1.2, 2026-11-10);
+  typing in Squirrel with this schema has not been confirmed yet.** See
   [Verified / unverified](#verified--unverified) and `docs/test-log.md`.
 
 ## What you get
@@ -95,7 +96,7 @@ grep -h "use grammar" "${TMPDIR%/}"/rime.squirrel/* | tail -3
 
 ## Known limits
 
-* Not tested on any Mac yet (see below). The schema files are the same as on Windows, where `cangjie5_fluency` was tested
+* Installed and deployed on one real Mac; typing not yet confirmed (see below). The schema files are the same as on Windows, where `cangjie5_fluency` was tested
   with Weasel 0.17.4 and Linux librime 1.10; `cangjie3_fluency` was tested on Linux librime only.
 * The language model made little difference on our test sentences (see the main repo's test logs).
 * The `cangjie3.base.dict.yaml` weights use essay.txt word frequencies. The essay.txt bundled in Squirrel 1.1.2 is not
@@ -122,15 +123,29 @@ Verified (by reading sources or unpacking the release on Linux, 2026-11-10):
 * On Linux: the generated table is byte-identical to the python converter's; librime builds both schemas; per-key
   traces are in `docs/test-log.md`; `tests/test_install.sh` passes (80 checks).
 
-Unverified (needs a Mac):
+Verified on a real Mac (macOS 26.5.2, arm64, `/bin/bash` 3.2.57, `/usr/bin/perl` 5.34.1, curl 8.7.1, Squirrel 1.1.2 from
+`brew install --cask squirrel-app`, 2026-11-10):
 
-* Everything about running `install.sh` on macOS: BSD tools, bash 3.2 (only reviewed statically), macOS perl 5.30-ish,
-  the actual `Squirrel --reload` effect, the input-source setup steps above.
-* Whether a gram in `~/Library/Rime` takes precedence over the one inside the app bundle in Squirrel (librime's usual
-  user-folder-first lookup is assumed; on Linux the model was found in the user folder when the shared folder had none).
-* The log file names under `$TMPDIR/rime.squirrel/`, and whether Terminal's `$TMPDIR` is the same folder Squirrel uses
-  (both should be the per-user temp folder).
-* Squirrel versions older than 1.1.2: which plugins they bundle.
+* The one-line install (`curl ... | bash`) ran to the end with bash 3.2: Squirrel found, bundled `essay.txt` used, table downloaded from
+  PIME and converted (22,174 entries, 21,010 characters), the 41,415,724-byte model downloaded, `default.custom.yaml` written.
+* **The table the perl converter produced on the Mac is byte-identical to the python converter's output** for the same inputs
+  (Squirrel's bundled `essay.txt` and PIME `mscj3.cin`), so the macOS path gives the same table as the Windows and Linux paths.
+* `open -a "/Library/Input Methods/Squirrel.app"` then `Squirrel --reload` deployed all schemas with **no `E` lines** in the log;
+  `build/` contains `cangjie3_fluency.table.bin` (15,187,380 B), `.prism.bin`, `.reverse.bin` and the schema. The log shows
+  `loaded plugin: octagram` from `Squirrel.app/Contents/Frameworks/rime-plugins/`.
+* Squirrel's log folder is `$TMPDIR/rime.squirrel/` with files like `rime.squirrel.<host>.<user>.log.INFO.<date>-<time>.<pid>.log`
+  and `rime.squirrel.INFO` symlinks (the deploy itself logs to `rime.squirrel-builder.*`).
+* **Do not use `Squirrel --build`** to deploy: it treats the current folder as the shared data folder, finds no `default.yaml`
+  and logs "schema list not defined". Use `--reload` while Squirrel is running (or the menu bar icon > Deploy).
+
+Still unverified:
+
+* Typing with `cangjie3_fluency` in a real Squirrel session, and therefore the `use grammar` / `failed to load grammar` log lines
+  (they are written when a session loads the schema). Please check: log in, type, then
+  `grep -h -E "use grammar|failed to load grammar" "${TMPDIR%/}"/rime.squirrel/*`.
+* Whether a gram in `~/Library/Rime` takes precedence over the one inside the app bundle (assumed; the Linux test found the model in
+  the user folder when the shared folder had none).
+* Squirrel versions older than 1.1.2: which plugins they bundle; Intel Macs; other macOS versions.
 
 ## Uninstall
 
@@ -166,7 +181,7 @@ macOS 上 Squirrel（鼠鬚管，Rime for macOS）的**倉頡整句輸入**：�
 最後按 Enter 上屏。方案檔與 Windows 版（小狼毫）相同，放在主倉庫 [githubhjs/cangjie-fluency](https://github.com/githubhjs/cangjie-fluency)，
 本倉庫只有 macOS 安裝腳本，安裝時會從主倉庫的固定版本（預設 `v0.2.0`）下載方案檔。
 
-**注意：目前只在 Linux 上測過，沒有在任何一台 Mac 上實際執行過。** 哪些有驗證、哪些沒有，見上面 [Verified / unverified](#verified--unverified)。
+**注意：已在一台真實的 Mac（macOS 26.5.2、Apple 晶片、Squirrel 1.1.2）上完成安裝、碼表轉換與部署（0 錯誤）；實際打字與語言模型是否載入還沒有人確認。** 哪些有驗證、哪些沒有，見上面 [Verified / unverified](#verified--unverified)。
 
 ## 為什麼是三代
 
