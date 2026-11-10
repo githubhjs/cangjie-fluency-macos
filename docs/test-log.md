@@ -324,3 +324,56 @@ I20261110 18:19:47.288094 2578721 octagram.cc:29] use grammar: zh-hant-t-essay-b
 cangjie5_fluency (--with-cangjie5) builds? schema file present in build:
 4
 ```
+
+
+## Self-contained rework (2026-11-10): everything from the main repo, no third party
+
+Earlier sections describe the first installer, which downloaded the table from PIME, essay.txt from rime-essay and the model from
+rime-octagram-data (that version was the one run on the real Mac). The installer now takes every file from the main repo
+(bundle layout next to the script, else `raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/`, default `v0.4.0`), SHA-256
+checks the tables, essay.txt, the model and the Squirrel pkg, always converts with the repo's `data/essay.txt`, installs the full model
+always, and installs Squirrel 1.1.2 from the bundled/`deps-v1` pkg with `sudo installer -pkg ... -target /` when
+`/Library/Input Methods/Squirrel.app` is missing (no Homebrew). `--offline` never touches the network. The perl converter now lives only
+in the main repo (`tools/cin2rime.pl`); this repo's copy was removed.
+
+All of the following ran on **Linux** (the macOS-only parts are stubbed); nothing new was run on a Mac.
+
+### `bash tests/test_install.sh`: 95 passed, 0 failed
+
+Real main-repo files as the bundle (`CJF_SRC_DIR`, big files symlinked), fake `Squirrel.app`, stub `curl`/`wget`/`sudo`:
+
+* fresh `--offline --with-cangjie5` install: all files, model 41,415,724 B, essay.txt not copied (Squirrel bundle has one),
+  **zero calls to the curl/wget/sudo stubs**, `default.custom.yaml` with cangjie3_fluency first;
+* **the generated table equals the python converter's output (`tools/cin2rime.py ... --essay data/essay.txt`) and a direct
+  `perl tools/cin2rime.pl` run** (byte-identical, `cmp`);
+* re-run: nothing rewritten, no backups, "language model already present"; changed schema file: exactly one backup;
+* all `default.custom.yaml` cases (LF, CRLF without final newline, brace style, no list, already listed, only cangjie5_fluency,
+  commented entry), dry-run (no files, no network, no Squirrel call), uninstall (manifest, edited files kept, backups kept);
+* Squirrel missing: with the bundled `deps/Squirrel-1.1.2.pkg` (SHA-256 checked) a stand-in for `sudo installer` receives the pkg and
+  creates the app; second run does not call it again; `--no-deps` stops with a clear error; a corrupted pkg stops with
+  `SHA-256 mismatch` before anything runs (the real `sudo installer -pkg` was **never run**);
+* script alone, `--offline`: fails naming `--offline`, no network; script alone, online (`--ref main`): curl asked for
+  `raw.githubusercontent.com/githubhjs/cangjie-fluency/main/weasel/cangjie3_fluency.schema.yaml` and only `githubhjs/cangjie-fluency` URLs;
+* a table with one extra line: `SHA-256 mismatch`, no generated table; no Squirrel `essay.txt`: the repo's essay.txt is installed into the Rime folder;
+* static bash 3.2 review (no `declare -A`, `mapfile`, `sha256sum`, `readlink -f`, `sed -i`, ...), no third-party URL or `brew install` in `install.sh`.
+
+### `./make-release.sh /home/hjs/projects/cangjie-fluency v0.2.0`
+
+```
+63853432 dist/cangjie-fluency-macos-v0.2.0-full.zip      (incl. deps/Squirrel-1.1.2.pkg 25,498,033 B, NOTICE-third-party.txt, squirrel-LICENSE.txt)
+   27458 dist/cangjie-fluency-macos-v0.2.0-slim.zip
+```
+
+Full zip unzipped to a temp dir; `bash install.sh --offline --rime-dir <tmp> --no-deploy` with a fake Squirrel.app and stub curl/wget/sudo:
+all files installed, 0 stub calls, `cangjie3.base.dict.yaml` produced by `/usr/bin/perl` is byte-identical to the python converter's output.
+The builder refuses to run when a shipped file's SHA-256 is not the one pinned in `install.sh`.
+
+### `docs/linux-compile-test.sh`
+
+Now uses `--offline` with the main-repo checkout (no download); compares the installer's table with `cin2rime.py` on the repo's own
+`tables/mscj3.cin` and `data/essay.txt`.
+
+### Not verified
+
+* No new run on a Mac: offline mode, `shasum`, installing Squirrel with a real `sudo installer -pkg`, and the first-install flow of the pkg are untested on macOS.
+* `shellcheck` is not installed here; only `bash -n` and the bash 3.2 pattern review were run.

@@ -1,10 +1,12 @@
 #!/bin/bash
-# Tests for install.sh. No network, no Squirrel needed: Squirrel is a fake app folder (SQUIRREL_APP_DIR) and every
-# download URL points to file:// fixtures that are generated here (nothing from PIME is stored in this repo).
+# Tests for install.sh. No Squirrel needed: it is a fake app folder (SQUIRREL_APP_DIR). The bundle layout comes from a
+# checkout of the main repo (CJF_MAIN_REPO, default /home/hjs/projects/cangjie-fluency): the REAL tables, essay.txt and
+# language model are used with their SHA-256 checks; weasel/ is copied so a test can change it.
 # Usage: bash tests/test_install.sh
 # Written for bash 3.2 (no associative arrays, no ${var,,}, no mapfile).
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
+MAIN="${CJF_MAIN_REPO:-/home/hjs/projects/cangjie-fluency}"
 W=$(mktemp -d "${TMPDIR:-/tmp}/cjf-test.XXXXXX") || exit 1
 trap 'rm -r "$W"' EXIT
 PASS=0; FAIL=0
@@ -17,36 +19,17 @@ check() { # DESC CMD...
 }
 count_bak() { ls "$1" 2>/dev/null | grep -c '\.bak-' ; }
 
-# ---------------------------------------------------------------- fixtures
-SRC="$W/src"; mkdir -p "$SRC/weasel"
-for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml; do
-  { printf '# fixture %s\nname: %s\nversion: "1"\n' "$f" "$f"; for i in 1 2 3 4 5 6 7 8; do printf '# padding line %s to pass the size sanity check\n' "$i"; done; } > "$SRC/weasel/$f"
-done
-# synthetic .cin (about 30000 single characters, a few multi-character and U+3000 lines), synthetic essay and base table
-perl -e '
-  binmode(STDOUT, ":utf8");
-  print "%gen ctest\n%keyname begin\na \x{65E5}\n%keyname end\n%chardef begin\n";
-  my @l = ("a".."z"); my $n = 0;
-  for my $x (@l) { for my $y (@l) { for my $z (@l) { for my $w (@l) { next if $n >= 30000;
-    my $c = chr(0x4E00 + $n); $n++;
-    print "$x$y$z$w $c\n"; print "$x$y$z$w\x{3000}extra\n" if $n % 5000 == 0; } } } }
-  print "a \x{65E5}\nzzzz AB\n%chardef end\n";' > "$SRC/mscj3.cin"
-perl -e '
-  binmode(STDOUT, ":utf8");
-  for my $n (0 .. 29999) { print chr(0x4E00 + $n), "\t", 1000 + ($n * 7) % 5000, "\n"; }
-  for my $n (0 .. 40000) { print "word$n\t", 100 + $n, "\n"; }' > "$SRC/essay.txt"
-head -c 1100000 /dev/zero | tr '\0' 'x' >> "$SRC/essay.txt"; printf '\n' >> "$SRC/essay.txt"
-perl -e 'print "# fixture\n"; for my $n (1 .. 12000) { print "x$n\tabc\t1\n" }' > "$SRC/cangjie5.base.dict.yaml"
-head -c 1000 /dev/zero | tr '\0' 'g' > "$SRC/model.gram"
+# ---------------------------------------------------------------- bundle = main repo layout (big files symlinked)
+SRC="$W/bundle"; mkdir -p "$SRC/deps"
+cp -R "$MAIN/weasel" "$SRC/weasel"; rm -rf "$SRC/weasel/docs"
+ln -s "$MAIN/tables" "$SRC/tables"; ln -s "$MAIN/data" "$SRC/data"; ln -s "$MAIN/tools" "$SRC/tools"
+ln -s "$MAIN/dl/Squirrel-1.1.2.pkg" "$SRC/deps/Squirrel-1.1.2.pkg"
+export CJF_SRC_DIR="$SRC"
 
-export CJF_RAW_BASE="file://$SRC"
-export CJF_CIN_URL="file://$SRC/mscj3.cin"
-export CJF_ESSAY_URL="file://$SRC/essay.txt"
-export CJF_C5BASE_URL="file://$SRC/cangjie5.base.dict.yaml"
-export CJF_GRAM_URL="file://$SRC/model.gram"
-export CJF_GRAM_SIZE=1000
-export CJF_GRAM_URL2=
-export CJF_MACOS_RAW="file://$REPO"
+# a curl/wget/sudo that only record: any use means the test (or installer) touched the network
+STUB="$W/stub"; mkdir -p "$STUB"; NETLOG="$W/net.log"; : > "$NETLOG"
+for c in curl wget sudo; do printf '#!/bin/sh\necho "%s $*" >> "%s"\nexit 22\n' "$c" "$NETLOG" > "$STUB/$c"; chmod +x "$STUB/$c"; done
+export PATH="$STUB:$PATH"
 
 # new_env NAME [noessay] -> sets RD (rime dir), APP (fake Squirrel), LOG (stub log)
 new_env() {
@@ -54,7 +37,7 @@ new_env() {
   RD="$base/rime"; APP="$base/Squirrel.app"; LOG="$base/stub.log"
   mkdir -p "$APP/Contents/MacOS" "$APP/Contents/SharedSupport" "$APP/Contents/Frameworks/rime-plugins" "$RD"
   : > "$APP/Contents/Frameworks/rime-plugins/librime-octagram.dylib"
-  [ "${2:-}" = noessay ] || cp "$SRC/essay.txt" "$APP/Contents/SharedSupport/essay.txt"
+  [ "${2:-}" = noessay ] || ln -s "$MAIN/data/essay.txt" "$APP/Contents/SharedSupport/essay.txt"
   printf '#!/bin/sh\necho "$@" >> "%s"\n' "$LOG" > "$APP/Contents/MacOS/Squirrel"
   chmod +x "$APP/Contents/MacOS/Squirrel"
   export SQUIRREL_APP_DIR="$APP"
@@ -64,46 +47,48 @@ inst() { bash "$REPO/install.sh" --rime-dir "$RD" "$@"; }   # output in $OUT
 run()  { OUT=$(inst "$@" 2>&1); RC=$?; }
 bakcount() { count_bak "$RD"; }
 
-echo "== 1. fresh install"
+echo "== 1. fresh install, full bundle, --offline"
 new_env fresh
-run --with-cangjie5
+run --with-cangjie5 --offline
 [ "$RC" = 0 ] || printf "%s\n" "$OUT"
 check "exit 0" test "$RC" = 0
 for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml cangjie3.base.dict.yaml cangjie5_fluency.schema.yaml \
          cangjie5_fluency.dict.yaml cangjie5.base.dict.yaml zh-hant-t-essay-bgw.gram default.custom.yaml; do
   check "installed $f" test -s "$RD/$f"
 done
+check "model is the full 41,415,724 byte file" test "$(wc -c < "$RD/zh-hant-t-essay-bgw.gram" | tr -d ' ')" = 41415724
 check "essay.txt not copied (found in the Squirrel bundle)" test ! -e "$RD/essay.txt"
 check "no backups" test "$(bakcount)" = 0
 check "no .part files left" test -z "$(ls "$RD" | grep '\.part$')"
+check "ZERO network calls (curl/wget/sudo stubs never used)" test ! -s "$NETLOG"
 check "default.custom.yaml: cangjie3_fluency is first schema" test "$(grep -- '- schema:' "$RD/default.custom.yaml" | head -1)" = "    - schema: cangjie3_fluency"
 check "default.custom.yaml lists cangjie5_fluency" grep -q 'schema: cangjie5_fluency$' "$RD/default.custom.yaml"
-perl "$REPO/tools/cin2rime.pl" "$SRC/mscj3.cin" "$W/expect.yaml" --essay "$SRC/essay.txt" >/dev/null
-check "generated table equals perl converter output with the bundled essay.txt" cmp -s "$W/expect.yaml" "$RD/cangjie3.base.dict.yaml"
+check "generated table equals the python converter output (repo essay.txt weights)" sh -c "python3 -I '$MAIN/tools/cin2rime.py' '$MAIN/tables/mscj3.cin' '$W/py.yaml' --essay '$MAIN/data/essay.txt' >/dev/null && cmp -s '$W/py.yaml' '$RD/cangjie3.base.dict.yaml'"
+check "generated table equals a direct perl converter run" sh -c "perl '$MAIN/tools/cin2rime.pl' '$MAIN/tables/mscj3.cin' '$W/pl.yaml' --essay '$MAIN/data/essay.txt' >/dev/null && cmp -s '$W/pl.yaml' '$RD/cangjie3.base.dict.yaml'"
 check "Squirrel --reload was called" grep -qx -- '--reload' "$LOG"
 check "manifest written" test -s "$RD/.cangjie-fluency-macos.manifest"
 
 echo "== 2. identical re-run"
-run --with-cangjie5
+run --with-cangjie5 --offline
 check "exit 0" test "$RC" = 0
 check "no backups" test "$(bakcount)" = 0
 check "says up to date" sh -c "printf '%s' \"\$1\" | grep -q 'up to date: cangjie3_fluency.schema.yaml'" _ "$OUT"
+check "model recognised as present" sh -c "printf '%s' \"\$1\" | grep -q 'language model already present'" _ "$OUT"
 check "default.custom.yaml: already listed" sh -c "printf '%s' \"\$1\" | grep -q 'already lists'" _ "$OUT"
 
 echo "== 3. changed source: exactly one backup"
 printf '# changed upstream\n' >> "$SRC/weasel/cangjie3_fluency.schema.yaml"
-run --with-cangjie5
+run --with-cangjie5 --offline --no-model
 check "exactly one backup" test "$(bakcount)" = 1
 check "backup is of the schema" test -n "$(ls "$RD" | grep '^cangjie3_fluency.schema.yaml.bak-')"
 check "new content installed" grep -q 'changed upstream' "$RD/cangjie3_fluency.schema.yaml"
-run --with-cangjie5
+run --with-cangjie5 --offline --no-model
 check "re-run again: still one backup" test "$(bakcount)" = 1
-cp "$SRC/weasel/cangjie3_fluency.schema.yaml" "$W/sch.changed"
-head -n -1 "$W/sch.changed" > "$SRC/weasel/cangjie3_fluency.schema.yaml"    # restore the fixture
+cp "$MAIN/weasel/cangjie3_fluency.schema.yaml" "$SRC/weasel/cangjie3_fluency.schema.yaml"
 
 echo "== 4. default.custom.yaml cases"
 dc_case() { # NAME  -> new env with a prepared default.custom.yaml (content in $W/dc.in), runs the installer
-  new_env "$1"; cp "$W/dc.in" "$RD/default.custom.yaml"; run --no-model --no-deploy
+  new_env "$1"; cp "$W/dc.in" "$RD/default.custom.yaml"; run --no-model --no-deploy --offline
 }
 printf '%s\n' '# my config' 'patch:' '  schema_list:' '    - schema: luna_pinyin' '    - schema: cangjie5' '  menu/page_size: 7' > "$W/dc.in"
 dc_case dc_lf
@@ -145,10 +130,11 @@ check "commented-out entry does not count" grep -qx '    - schema: cangjie3_flue
 
 echo "== 5. --dry-run changes nothing and downloads nothing"
 new_env dry; rmdir "$RD"
-OUT=$(CJF_CIN_URL=file:///nonexistent CJF_GRAM_URL=file:///nonexistent CJF_RAW_BASE=file:///nonexistent bash "$REPO/install.sh" --rime-dir "$RD" --with-cangjie5 --dry-run 2>&1); RC=$?
+OUT=$(bash "$REPO/install.sh" --rime-dir "$RD" --with-cangjie5 --dry-run 2>&1); RC=$?
 check "exit 0" test "$RC" = 0
 check "Rime folder not created" test ! -e "$RD"
 check "Squirrel not called" test ! -s "$LOG"
+check "no network" test ! -s "$NETLOG"
 mkdir -p "$RD"; printf 'patch:\n  schema_list:\n    - schema: luna_pinyin\n' > "$RD/default.custom.yaml"; cp "$RD/default.custom.yaml" "$W/dry.before"
 run --dry-run
 check "existing default.custom.yaml untouched by dry run" cmp -s "$W/dry.before" "$RD/default.custom.yaml"
@@ -156,64 +142,93 @@ check "nothing else created" test "$(ls -A "$RD")" = "default.custom.yaml"
 
 echo "== 6. --uninstall"
 new_env uninst
-run --with-cangjie5
-printf "# changed\n" >> "$SRC/weasel/cangjie5_fluency.schema.yaml"; run --with-cangjie5   # makes one backup
+run --with-cangjie5 --offline --no-model
+printf "# changed\n" >> "$SRC/weasel/cangjie5_fluency.schema.yaml"; run --with-cangjie5 --offline --no-model   # makes one backup
 printf "# user edit\n" >> "$RD/cangjie3_fluency.dict.yaml"
-printf x > "$RD/keepme.txt"; cp "$RD/default.custom.yaml" "$W/uninst.dc"
+printf x > "$RD/keepme.txt"
 BK=$(bakcount)
 run --uninstall --no-deploy
 check "exit 0" test "$RC" = 0
 check "schema removed" test ! -e "$RD/cangjie3_fluency.schema.yaml"
 check "generated table removed" test ! -e "$RD/cangjie3.base.dict.yaml"
-check "language model removed" test ! -e "$RD/zh-hant-t-essay-bgw.gram"
 check "file edited by the user is kept" test -e "$RD/cangjie3_fluency.dict.yaml"
 check "foreign file kept" test -e "$RD/keepme.txt"
 check "backups kept" test "$(bakcount)" = "$BK"
 check "default.custom.yaml created by the installer and unchanged is removed" test ! -e "$RD/default.custom.yaml"
 check "manifest removed" test ! -e "$RD/.cangjie-fluency-macos.manifest"
-
-head -n -1 "$SRC/weasel/cangjie5_fluency.schema.yaml" > "$W/c5.restore" && cp "$W/c5.restore" "$SRC/weasel/cangjie5_fluency.schema.yaml"
+cp "$MAIN/weasel/cangjie5_fluency.schema.yaml" "$SRC/weasel/cangjie5_fluency.schema.yaml"
 
 echo "== 7. pre-existing file is replaced with a backup but never removed by --uninstall"
 new_env preex
 printf 'name: mine\n# my own schema\n' > "$RD/cangjie3_fluency.schema.yaml"
-printf "patch:\n  schema_list:\n    - schema: luna_pinyin\n" > "$RD/default.custom.yaml"; cp "$RD/default.custom.yaml" "$W/preex.dc"
-run --no-model --no-deploy
+printf "patch:\n  schema_list:\n    - schema: luna_pinyin\n" > "$RD/default.custom.yaml"
+run --no-model --no-deploy --offline
 check "backup of the user's file" test "$(ls "$RD" | grep -c '^cangjie3_fluency.schema.yaml.bak-')" = 1
 run --uninstall --no-deploy
 check "pre-existing (replaced) file kept by uninstall" test -e "$RD/cangjie3_fluency.schema.yaml"
 check "user default.custom.yaml (edited by us) is not touched by uninstall" test -e "$RD/default.custom.yaml"
 check "uninstall tells the user to edit default.custom.yaml" sh -c "printf '%s' \"\$1\" | grep -q 'default.custom.yaml still lists'" _ "$OUT"
 
-echo "== 8. no Squirrel -> clear error; essay.txt downloaded when missing; stand-alone script downloads the converter"
-new_env nosq; export SQUIRREL_APP_DIR="$W/does-not-exist"
-run
-check "fails" test "$RC" != 0
-check "mentions the right cask name" sh -c "printf '%s' \"\$1\" | grep -q 'brew install --cask squirrel-app'" _ "$OUT"
-new_env noessay noessay
-mkdir "$W/solo"; cp "$REPO/install.sh" "$W/solo/install.sh"
-OUT=$(bash "$W/solo/install.sh" --rime-dir "$RD" --no-model --no-deploy 2>&1); RC=$?
-check "stand-alone run exit 0" test "$RC" = 0
-check "essay.txt downloaded into the Rime folder" test -s "$RD/essay.txt"
-check "converter downloaded (not next to the script)" sh -c "printf '%s' \"\$1\" | grep -q 'downloading tools/cin2rime.pl'" _ "$OUT"
-check "table equals the converter output" cmp -s "$W/expect.yaml" "$RD/cangjie3.base.dict.yaml"
-check "model skipped with --no-model" test ! -e "$RD/zh-hant-t-essay-bgw.gram"
+echo "== 8. Squirrel missing: installed from the bundled pkg (stub installer), present: left alone"
+new_env nosq; export SQUIRREL_APP_DIR="$W/nosq/New.app"
+cat > "$W/fake-installer.sh" <<'EOS'
+#!/bin/sh
+echo "$1" >> "$FAKE_INSTALL_LOG"
+mkdir -p "$SQUIRREL_APP_DIR/Contents/MacOS" "$SQUIRREL_APP_DIR/Contents/SharedSupport"
+printf '#!/bin/sh\nexit 0\n' > "$SQUIRREL_APP_DIR/Contents/MacOS/Squirrel"; chmod +x "$SQUIRREL_APP_DIR/Contents/MacOS/Squirrel"
+EOS
+chmod +x "$W/fake-installer.sh"; export FAKE_INSTALL_LOG="$W/fake-install.log"; : > "$FAKE_INSTALL_LOG"
+export CJF_SQUIRREL_INSTALL_CMD="$W/fake-installer.sh"
+run --no-model --no-deploy --offline
+check "exit 0" test "$RC" = 0
+check "pkg handed to the installer command (hash-checked bundle copy)" test -s "$FAKE_INSTALL_LOG"
+check "Squirrel app now exists" test -d "$SQUIRREL_APP_DIR"
+check "still zero network calls (offline, pkg from deps/)" test ! -s "$NETLOG"
+check "tells the user to add Squirrel in Input Sources" sh -c "printf '%s' \"\$1\" | grep -q 'Input Sources'" _ "$OUT"
+: > "$FAKE_INSTALL_LOG"; run --no-model --no-deploy --offline
+check "Squirrel present: installer command NOT called again" test ! -s "$FAKE_INSTALL_LOG"
+new_env nosq2; export SQUIRREL_APP_DIR="$W/nosq2/None.app"
+run --no-model --no-deploy --offline --no-deps
+check "--no-deps with Squirrel missing: fails clearly" test "$RC" != 0
+check "--no-deps: pkg not touched" test ! -s "$FAKE_INSTALL_LOG"
+# damaged pkg: SHA-256 mismatch stops before anything is installed
+BADB="$W/badpkg"; mkdir -p "$BADB/deps"; cp -R "$SRC/weasel" "$BADB/weasel"; ln -s "$MAIN/tables" "$BADB/tables"; ln -s "$MAIN/data" "$BADB/data"; ln -s "$MAIN/tools" "$BADB/tools"
+printf 'not a pkg' > "$BADB/deps/Squirrel-1.1.2.pkg"
+new_env nosq3; export SQUIRREL_APP_DIR="$W/nosq3/None.app"
+OUT=$(CJF_SRC_DIR="$BADB" bash "$REPO/install.sh" --rime-dir "$RD" --no-model --no-deploy --offline 2>&1); RC=$?
+check "bad pkg hash: stops" test "$RC" != 0
+check "bad pkg hash: message" sh -c "printf '%s' \"\$1\" | grep -q 'SHA-256 mismatch'" _ "$OUT"
+check "bad pkg hash: installer command not run" test ! -s "$FAKE_INSTALL_LOG"
+unset CJF_SQUIRREL_INSTALL_CMD
 
-echo "== 9. wrong model size is rejected"
-new_env badgram
-OUT=$(CJF_GRAM_URL2= CJF_GRAM_SIZE=999 bash "$REPO/install.sh" --rime-dir "$RD" --no-deploy 2>&1); RC=$?
-check "fails on size mismatch" test "$RC" != 0
-check "no model installed" test ! -e "$RD/zh-hant-t-essay-bgw.gram"
-new_env mirror
-OUT=$(CJF_GRAM_URL=file:///nonexistent CJF_GRAM_URL2="file://$SRC/model.gram" bash "$REPO/install.sh" --rime-dir "$RD" --no-deploy 2>&1); RC=$?
-check "falls back to the second model URL" test "$RC" = 0 -a -s "$RD/zh-hant-t-essay-bgw.gram"
+echo "== 9. offline without a bundle fails; online path targets only the main repo; bad table hash stops"
+new_env nobundle
+mkdir "$W/solo"; cp "$REPO/install.sh" "$W/solo/install.sh"
+OUT=$(env -u CJF_SRC_DIR bash "$W/solo/install.sh" --rime-dir "$RD" --no-model --no-deploy --offline 2>&1); RC=$?
+check "offline, script alone: fails" test "$RC" != 0
+check "offline, script alone: clear message" sh -c "printf '%s' \"\$1\" | grep -q -- '--offline'" _ "$OUT"
+check "offline, script alone: no network" test ! -s "$NETLOG"
+OUT=$(env -u CJF_SRC_DIR bash "$W/solo/install.sh" --rime-dir "$RD" --no-model --no-deploy --ref main 2>&1); RC=$?
+check "online, script alone: curl asked for the main repo raw URL" grep -q 'raw.githubusercontent.com/githubhjs/cangjie-fluency/main/weasel/cangjie3_fluency.schema.yaml' "$NETLOG"
+check "online: only the main repo is contacted" test -z "$(grep -v 'githubhjs/cangjie-fluency' "$NETLOG")"
+BADT="$W/badtable"; mkdir -p "$BADT/tables"; cp -R "$SRC/weasel" "$BADT/weasel"; ln -s "$MAIN/data" "$BADT/data"; ln -s "$MAIN/tools" "$BADT/tools"
+cp "$MAIN/tables/mscj3.cin" "$BADT/tables/mscj3.cin"; printf 'x a\n' >> "$BADT/tables/mscj3.cin"
+new_env badtable
+OUT=$(CJF_SRC_DIR="$BADT" bash "$REPO/install.sh" --rime-dir "$RD" --no-model --no-deploy --offline 2>&1); RC=$?
+check "bad table hash: stops" test "$RC" != 0
+check "bad table hash: no generated table" test ! -e "$RD/cangjie3.base.dict.yaml"
+new_env noessay noessay
+OUT=$(inst --no-model --no-deploy --offline 2>&1); RC=$?
+check "no Squirrel essay.txt: repo essay.txt installed into the Rime folder" test -s "$RD/essay.txt"
+check "table still identical" cmp -s "$W/py.yaml" "$RD/cangjie3.base.dict.yaml"
 
 echo "== 10. static bash 3.2 review (patterns that do not exist in bash 3.2)"
 for pat in "declare -A" mapfile readarray "&>>" "|&" sha256sum "readlink -f" "stat -c" "date -d" "sed -i" coproc "local -n"; do
   if grep -v "^[[:space:]]*#" "$REPO/install.sh" | grep -qF -- "$pat"; then bad "install.sh uses: $pat"; else ok "install.sh does not use: $pat"; fi
 done
 check "install.sh: no \${var,,} or \${var^^} (bash 4)" sh -c "! grep -v '^[[:space:]]*#' '$REPO/install.sh' | grep -Eq '\$\{[A-Za-z_0-9]+(,,|\^\^)'"
-check "perl converter has no non-core module" sh -c "! grep -E '^use ' '$REPO/tools/cin2rime.pl' | grep -Ev 'strict|warnings|utf8|Encode'"
+check "perl converter has no non-core module" sh -c "! grep -E '^use ' '$MAIN/tools/cin2rime.pl' | grep -Ev 'strict|warnings|utf8|Encode'"
+check "install.sh has no third-party URL or Homebrew advice" sh -c "! grep -Eqi 'EasyIME|PIME|rime/rime-|lotem/|brew install' '$REPO/install.sh'"
 
 echo
 echo "passed: $PASS  failed: $FAIL"

@@ -2,7 +2,7 @@
 # Linux compile test for cangjie-fluency-macos (nothing here runs on a Mac).
 # Needs the librime harness of the main repo (rimebin/, testenv/shared_nogy, weasel/docs/rime_driver.py):
 #   MAIN=/home/hjs/projects/cangjie-fluency bash docs/linux-compile-test.sh
-# Real downloads. Writes only to ./testenv/ (git-ignored).
+# No network: the installer runs with --offline on the main repo checkout (bundle layout). Writes only to ./testenv/ (git-ignored).
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 MAIN="${MAIN:-/home/hjs/projects/cangjie-fluency}"
@@ -16,20 +16,19 @@ rm -r "$T" 2>/dev/null
 mkdir -p "$RD" "$DL" "$APP/Contents/MacOS" "$APP/Contents/SharedSupport" "$APP/Contents/Frameworks/rime-plugins"
 : > "$APP/Contents/Frameworks/rime-plugins/librime-octagram.dylib"
 printf '#!/bin/sh\necho "stub Squirrel called with: $@"\n' > "$APP/Contents/MacOS/Squirrel"; chmod +x "$APP/Contents/MacOS/Squirrel"
-echo "fake Squirrel app (no essay.txt in it, so the installer must download it): $APP"
+echo "fake Squirrel app (no essay.txt in it, so the installer installs the repo essay.txt): $APP"
 
-echo; echo "### 1. install.sh with real downloads (default ref, --with-cangjie5)"
-time SQUIRREL_APP_DIR="$APP" bash "$HERE/install.sh" --rime-dir "$RD" --with-cangjie5
+echo; echo "### 1. install.sh --offline (bundle = main repo checkout, --with-cangjie5)"
+time SQUIRREL_APP_DIR="$APP" CJF_SRC_DIR="$MAIN" bash "$HERE/install.sh" --offline --rime-dir "$RD" --with-cangjie5
 echo "exit=$?"; ls -l "$RD"
 
 echo; echo "### 2. identical re-run (must change nothing, make no backup)"
-SQUIRREL_APP_DIR="$APP" bash "$HERE/install.sh" --rime-dir "$RD" --with-cangjie5 --no-deploy
+SQUIRREL_APP_DIR="$APP" CJF_SRC_DIR="$MAIN" bash "$HERE/install.sh" --offline --rime-dir "$RD" --with-cangjie5 --no-deploy
 echo "backups: $(ls "$RD" | grep -c '\.bak-')"
 
-echo; echo "### 3. generated table vs the python converter (same downloaded mscj3.cin and essay.txt)"
-curl -sSfL -o "$DL/mscj3.cin" https://raw.githubusercontent.com/EasyIME/PIME/master/python/cinbase/cin/mscj3.cin
-sha256sum "$DL/mscj3.cin" "$RD/essay.txt"
-python3 -I "$MAIN/tools/cin2rime.py" "$DL/mscj3.cin" "$DL/py.dict.yaml" --essay "$RD/essay.txt"
+echo; echo "### 3. generated table vs the python converter (repo tables/mscj3.cin and data/essay.txt)"
+sha256sum "$MAIN/tables/mscj3.cin" "$RD/essay.txt"
+python3 -I "$MAIN/tools/cin2rime.py" "$MAIN/tables/mscj3.cin" "$DL/py.dict.yaml" --essay "$MAIN/data/essay.txt"
 cmp "$DL/py.dict.yaml" "$RD/cangjie3.base.dict.yaml" && echo "BYTE-IDENTICAL: installer output == cin2rime.py output"
 sha256sum "$DL/py.dict.yaml" "$RD/cangjie3.base.dict.yaml"
 

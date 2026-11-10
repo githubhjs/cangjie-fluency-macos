@@ -4,6 +4,12 @@
 # bash 3.2 compatible (the bash that ships with macOS). Uses only: curl, perl (/usr/bin/perl), awk, cmp, wc, tr, cksum/shasum.
 # No python, no GNU-only options (no sha256sum, readlink -f, stat -c, date -d, sed -i).
 #
+# Everything comes from the owner's main repository https://github.com/githubhjs/cangjie-fluency (tables, word list,
+# language model, converter, schema files, and the unmodified Squirrel installer in its release deps-v1) and nothing
+# from any other third party.  Per file: (1) next to this script in the layout of the full release zip, else
+# (2) raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/ (not with --offline).  Tables, essay.txt, the
+# model and the Squirrel pkg are SHA-256 checked.
+#
 # Run (safer form: download, read, run):
 #   curl -fsSL -o install.sh https://raw.githubusercontent.com/githubhjs/cangjie-fluency-macos/main/install.sh
 #   bash install.sh --dry-run
@@ -15,16 +21,18 @@
 # Everything is inside functions and main runs on the last line, so "curl ... | bash" cannot be
 # truncated or have its stdin eaten half-way through.
 
-CJF_VERSION="0.1.0"
+CJF_VERSION="0.2.0"
 
 usage() {
   cat <<'USAGE'
 usage: bash install.sh [options]
 
   --rime-dir DIR     Rime user folder (default: $RIME_DIR, else ~/Library/Rime)
-  --ref TAG          version (tag/branch) of githubhjs/cangjie-fluency to take the schema files from (default: v0.2.0)
+  --ref TAG          version (tag/branch) of githubhjs/cangjie-fluency to download missing files from (default: v0.4.0)
+  --offline          never touch the network: everything must be next to this script (full release zip layout)
+  --no-deps          do not install Squirrel when it is missing (that needs sudo and the Squirrel pkg)
   --with-cangjie5    also install the 5th-generation schema cangjie5_fluency (+ cangjie5.base.dict.yaml)
-  --no-model         do not download the 41 MB language model (zh-hant-t-essay-bgw.gram)
+  --no-model         do not install the 41 MB language model (zh-hant-t-essay-bgw.gram)
   --no-deploy        install files only; do not ask Squirrel to redeploy
   --dry-run          show what would be done; change nothing, download nothing
   --uninstall        remove the files this installer created (backups and your default.custom.yaml are kept)
@@ -53,11 +61,26 @@ checksum_of() {
   fi
 }
 
+# sha256_of FILE -> hex digest (shasum on macOS; openssl or perl as fallbacks)
+sha256_of() {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | awk '{print $NF}'
+  else "$PERL" -MDigest::SHA -e 'open(F, "<:raw", $ARGV[0]) or die; print Digest::SHA->new(256)->addfile(*F)->hexdigest, "\n"' "$1"
+  fi
+}
+
+verify_sha() { # FILE EXPECTED LABEL
+  local got
+  got=$(sha256_of "$1")
+  [ "$got" = "$2" ] || die "$3: SHA-256 mismatch (got $got, expected $2). The file is damaged or the wrong version; nothing was installed from it."
+}
+
 # download URL DEST LABEL  (progress bar only for big files on a terminal)
 progress_flag() { if [ "${1:-}" = "big" ] && [ -t 2 ]; then printf %s "-#"; else printf %s "-sS"; fi; }
 
 download() {
   local url="$1" dest="$2" label="$3" prog
+  [ "$OFFLINE" = 0 ] || die "internal error: network access attempted with --offline ($url)"
   prog=$(progress_flag "${4:-}")
   say "downloading $label"
   curl -fL $prog --retry 2 --connect-timeout 20 -o "$dest" "$url" || die "download failed: $url"
@@ -110,14 +133,17 @@ place_file() {
   fi
 }
 
-# the schema files are never copied into this repo: take a local copy only when one sits next to this script
-find_local() { # NAME -> path or empty
-  local n="$1" d
-  [ -n "${SCRIPT_DIR:-}" ] || return 0
-  for d in "$SCRIPT_DIR" "$SCRIPT_DIR/weasel"; do
-    if [ -f "$d/$n" ]; then printf '%s' "$d/$n"; return 0; fi
-  done
-  return 0
+# get_src RELPATH DEST [SHA256] [big]: the bundle layout next to the script (or CJF_SRC_DIR) first, else download
+get_src() {
+  if [ -n "$SRC_LOCAL" ] && [ -f "$SRC_LOCAL/$1" ]; then
+    cp "$SRC_LOCAL/$1" "$2" || die "cannot copy $SRC_LOCAL/$1"
+  elif [ "$OFFLINE" = 1 ]; then
+    die "--offline: $1 is missing from the bundle next to install.sh"
+  else
+    download "$RAW_BASE/$1" "$2" "$1 ($REF)" "${4:-}"
+  fi
+  [ -s "$2" ] || die "$1 is empty"
+  if [ -n "${3:-}" ]; then verify_sha "$2" "$3" "$1"; fi
 }
 
 # ---------------------------------------------------------------- default.custom.yaml surgery (perl, binary-safe)
@@ -189,14 +215,16 @@ PERL
 
 main() {
   RIME_DIR="${RIME_DIR:-$HOME/Library/Rime}"
-  REF="${CJF_REF:-v0.2.0}"
-  WITH_C5=0; NO_MODEL=0; NO_DEPLOY=0; DRY=0; UNINSTALL=0
+  REF="${CJF_REF:-v0.4.0}"
+  WITH_C5=0; NO_MODEL=0; NO_DEPLOY=0; NO_DEPS=0; OFFLINE=0; DRY=0; UNINSTALL=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --rime-dir)       [ $# -ge 2 ] || die "--rime-dir needs a folder"; RIME_DIR="$2"; shift ;;
       --rime-dir=*)     RIME_DIR="${1#--rime-dir=}" ;;
       --ref)            [ $# -ge 2 ] || die "--ref needs a tag"; REF="$2"; shift ;;
       --ref=*)          REF="${1#--ref=}" ;;
+      --offline)        OFFLINE=1 ;;
+      --no-deps)        NO_DEPS=1 ;;
       --with-cangjie5)  WITH_C5=1 ;;
       --no-model)       NO_MODEL=1 ;;
       --no-deploy)      NO_DEPLOY=1 ;;
@@ -210,19 +238,27 @@ main() {
   [ -n "$RIME_DIR" ] || die "empty Rime folder"
 
   SQUIRREL_APP="${SQUIRREL_APP_DIR:-/Library/Input Methods/Squirrel.app}"
-  RAW_BASE="${CJF_RAW_BASE:-https://raw.githubusercontent.com/githubhjs/cangjie-fluency/$REF}"
-  MACOS_RAW="${CJF_MACOS_RAW:-https://raw.githubusercontent.com/githubhjs/cangjie-fluency-macos/main}"
-  CIN_URL="${CJF_CIN_URL:-https://raw.githubusercontent.com/EasyIME/PIME/master/python/cinbase/cin/mscj3.cin}"
-  ESSAY_URL="${CJF_ESSAY_URL:-https://raw.githubusercontent.com/rime/rime-essay/master/essay.txt}"
-  C5BASE_URL="${CJF_C5BASE_URL:-https://raw.githubusercontent.com/rime/rime-cangjie/master/cangjie5.base.dict.yaml}"
-  GRAM_URL="${CJF_GRAM_URL:-https://github.com/lotem/rime-octagram-data/raw/hant/zh-hant-t-essay-bgw.gram}"
-  GRAM_URL2="${CJF_GRAM_URL2-https://raw.githubusercontent.com/lotem/rime-octagram-data/hant/zh-hant-t-essay-bgw.gram}"
-  GRAM_SIZE="${CJF_GRAM_SIZE:-41415724}"
+  RAW_BASE="https://raw.githubusercontent.com/githubhjs/cangjie-fluency/$REF"
+  SQUIRREL_PKG_URL="https://github.com/githubhjs/cangjie-fluency/releases/download/deps-v1/Squirrel-1.1.2.pkg"
+  SQUIRREL_PKG_SHA="614746013212937623d5bbab9901e9c43d1ec937aa32307d6b6092a05e308287"
+  GRAM_SIZE=41415724
+  GRAM_SHA="0488ebd6688f900a39200f2b794f2f99bcbf1e8fc27280ae4a2324b08b1559c1"
+  ESSAY_SHA="3e8512ebaa6657e35961b1f5762060717c647e3bf471d5e3b86e783b4e934ffb"
+  CIN3_SHA="a7b3d03898dc0b2b0bd7803ad0be7b940a1ed945ac5d6314ed832b1dbf6839a2"
+  CJ5_BASE_SHA="0b7a801720bbf04cea06c55577c159e2e67b9bbb763bf00026a8520497772799"
   STAMP=$(date +%Y%m%d-%H%M%S)
   MANIFEST="$RIME_DIR/.cangjie-fluency-macos.manifest"
 
   SCRIPT_DIR=""
   if [ -f "$0" ]; then SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); fi
+  SRC_LOCAL=""
+  for cand in "${CJF_SRC_DIR:-}" "$SCRIPT_DIR"; do   # CJF_SRC_DIR: any directory with the bundle layout
+    [ -n "$cand" ] || continue
+    if [ -f "$cand/weasel/cangjie3_fluency.schema.yaml" ] && [ -f "$cand/tools/cin2rime.pl" ]; then SRC_LOCAL="$cand"; break; fi
+  done
+  if [ -n "$SRC_LOCAL" ]; then say "using the files next to the installer (bundle layout): $SRC_LOCAL"
+  elif [ "$OFFLINE" = 1 ]; then die "--offline: the files (weasel/ tables/ data/ tools/) must be next to install.sh (use the full release zip)."
+  else say "files come from githubhjs/cangjie-fluency at $REF"; fi
 
   TMP=$(mktemp -d "${TMPDIR:-/tmp}/cjf.XXXXXX") || die "cannot create a temporary folder"
   trap 'rm -r "$TMP" 2>/dev/null' EXIT
@@ -233,25 +269,39 @@ main() {
   if [ "$UNINSTALL" = 1 ]; then do_uninstall; return $?; fi
 
   # ---- tools
-  command -v curl >/dev/null 2>&1 || die "curl not found (it ships with macOS)"
+  if [ "$OFFLINE" = 0 ]; then command -v curl >/dev/null 2>&1 || die "curl not found (it ships with macOS)"; fi
   PERL=/usr/bin/perl
   [ -x "$PERL" ] || PERL=$(command -v perl 2>/dev/null)
   [ -n "$PERL" ] && [ -x "$PERL" ] || die "perl not found (macOS ships /usr/bin/perl)"
 
-  # ---- Squirrel
+  # ---- Squirrel (the engine). Present = left alone. Missing = the unmodified upstream pkg from the main repo's
+  # release deps-v1 (or deps/ in the full zip), SHA-256 checked, installed with the macOS installer (sudo).
   SS="$SQUIRREL_APP/Contents/SharedSupport"
   if [ ! -d "$SQUIRREL_APP" ]; then
-    msg="Squirrel (Rime for macOS) is not installed at \"$SQUIRREL_APP\". Install it first, then run this again:
-    brew install --cask squirrel-app          (the cask is named squirrel-app, not squirrel)
-  or download Squirrel-<version>.pkg from https://github.com/rime/squirrel/releases and open it.
-  Then log out and in, and add Squirrel in System Settings > Keyboard > Input Sources (Chinese, Traditional > Squirrel)."
-    if [ "$DRY" = 1 ]; then warn "$msg"; else die "$msg"; fi
-  else
+    if [ "$NO_DEPS" = 1 ]; then
+      msg="Squirrel (Rime for macOS) is not installed at \"$SQUIRREL_APP\" and --no-deps was given. Install Squirrel-1.1.2.pkg (deps/ in the full zip, or https://github.com/githubhjs/cangjie-fluency/releases/tag/deps-v1) yourself, then run this again."
+      if [ "$DRY" = 1 ]; then warn "$msg"; else die "$msg"; fi
+    elif [ "$DRY" = 1 ]; then
+      say "DRY: Squirrel is missing; would take Squirrel-1.1.2.pkg (SHA-256 $SQUIRREL_PKG_SHA) and run: sudo installer -pkg <pkg> -target /"
+    else
+      say "Squirrel is not installed: installing Squirrel 1.1.2 (unmodified upstream pkg, GPL-3.0) with sudo installer"
+      get_src "deps/Squirrel-1.1.2.pkg" "$TMP/Squirrel-1.1.2.pkg" "$SQUIRREL_PKG_SHA" big
+      if [ -n "${CJF_SQUIRREL_INSTALL_CMD:-}" ]; then
+        $CJF_SQUIRREL_INSTALL_CMD "$TMP/Squirrel-1.1.2.pkg" || die "installing Squirrel failed"
+      else
+        sudo installer -pkg "$TMP/Squirrel-1.1.2.pkg" -target / || die "installing Squirrel failed (sudo installer -pkg ... -target /)"
+      fi
+      [ -d "$SQUIRREL_APP" ] || die "the Squirrel pkg ran but $SQUIRREL_APP does not exist"
+      say "Squirrel installed. Add it in System Settings > Keyboard > Input Sources (Chinese, Traditional > Squirrel)."
+      say "Squirrel itself says: log out and in only if typing fails in some apps after this first install."
+    fi
+  fi
+  if [ -d "$SQUIRREL_APP" ]; then
     ver=""
     if command -v defaults >/dev/null 2>&1; then ver=$(defaults read "$SQUIRREL_APP/Contents/Info" CFBundleShortVersionString 2>/dev/null); fi
     say "Squirrel found: $SQUIRREL_APP ${ver:+(version $ver)}"
     if [ ! -f "$SQUIRREL_APP/Contents/Frameworks/rime-plugins/librime-octagram.dylib" ]; then
-      warn "this Squirrel build has no librime-octagram plugin: the schema still works, but the language model is ignored (sentence correction is weaker)."
+      warn "this Squirrel build has no librime-octagram plugin: the schema still works, but the language model is ignored."
     fi
   fi
 
@@ -259,54 +309,31 @@ main() {
     if [ "$DRY" = 1 ]; then say "DRY: would create $RIME_DIR"; else mkdir -p "$RIME_DIR" || die "cannot create $RIME_DIR"; fi
   fi
 
-  # ---- schema files (this repo does not duplicate them: pinned tag of githubhjs/cangjie-fluency)
+  # ---- schema files + essay.txt + table + converter
   SCHEMA_FILES="cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml"
   if [ "$WITH_C5" = 1 ]; then SCHEMA_FILES="$SCHEMA_FILES cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml"; fi
-  for f in $SCHEMA_FILES; do
-    loc=$(find_local "$f")
-    if [ "$DRY" = 1 ]; then
-      if [ -n "$loc" ]; then say "DRY: would copy local $loc"; else say "DRY: would download $RAW_BASE/weasel/$f"; fi
-      continue
-    fi
-    if [ -n "$loc" ]; then
-      say "using local copy: $loc"
-      cp "$loc" "$TMP/$f"
-    else
-      download "$RAW_BASE/weasel/$f" "$TMP/$f" "$f ($REF)"
-    fi
-    require_min "$TMP/$f" 300 "$f"
-    grep -q 'name:' "$TMP/$f" || die "$f does not look like a Rime yaml file"
-    place_file "$TMP/$f" "$f"
-  done
-
-  # ---- essay.txt (word list for the dictionary and the weights of the converter)
-  ESSAY_SRC=""
-  if [ -f "$RIME_DIR/essay.txt" ]; then ESSAY_SRC="$RIME_DIR/essay.txt"
-  elif [ -f "$SS/essay.txt" ]; then ESSAY_SRC="$SS/essay.txt"; fi
-  if [ -n "$ESSAY_SRC" ]; then
-    say "essay.txt found: $ESSAY_SRC"
-  elif [ "$DRY" = 1 ]; then
-    say "DRY: would download $ESSAY_URL -> $RIME_DIR/essay.txt"
-  else
-    download "$ESSAY_URL" "$TMP/essay.txt" "essay.txt" big
-    require_min "$TMP/essay.txt" 1000000 "essay.txt"
-    place_file "$TMP/essay.txt" "essay.txt"
-    ESSAY_SRC="$RIME_DIR/essay.txt"
-  fi
-
-  # ---- cangjie3.base.dict.yaml: download mscj3.cin and convert here. Never stored in the repo (license unknown).
-  CONV=""
-  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/tools/cin2rime.pl" ]; then CONV="$SCRIPT_DIR/tools/cin2rime.pl"; fi
   if [ "$DRY" = 1 ]; then
-    say "DRY: would download $CIN_URL, convert it with cin2rime.pl (essay weights) -> $RIME_DIR/cangjie3.base.dict.yaml"
+    for f in $SCHEMA_FILES; do say "DRY: would install $f"; done
+    say "DRY: would convert tables/mscj3.cin (SHA-256 checked) with tools/cin2rime.pl and data/essay.txt weights -> $RIME_DIR/cangjie3.base.dict.yaml"
   else
-    if [ -z "$CONV" ]; then
-      download "$MACOS_RAW/tools/cin2rime.pl" "$TMP/cin2rime.pl" "tools/cin2rime.pl"
-      CONV="$TMP/cin2rime.pl"
-    fi
-    download "$CIN_URL" "$TMP/mscj3.cin" "mscj3.cin (PIME)"
-    require_min "$TMP/mscj3.cin" 100000 "mscj3.cin"
-    if "$PERL" "$CONV" "$TMP/mscj3.cin" "$TMP/cangjie3.base.dict.yaml" --essay "$ESSAY_SRC" > "$TMP/conv.log" 2>&1; then
+    for f in $SCHEMA_FILES; do
+      get_src "weasel/$f" "$TMP/$f"
+      grep -q 'name:' "$TMP/$f" || die "$f does not look like a Rime yaml file"
+      place_file "$TMP/$f" "$f"
+    done
+
+    # essay.txt: the repository's pinned copy ALWAYS feeds the converter (identical output on every platform);
+    # it is installed into the user folder only when neither Squirrel nor the user folder has one.
+    get_src "data/essay.txt" "$TMP/essay.txt" "$ESSAY_SHA" big
+    if [ -f "$SS/essay.txt" ]; then say "Squirrel's own essay.txt found: not installing another copy"
+    elif [ -f "$RIME_DIR/essay.txt" ]; then say "essay.txt already in $RIME_DIR: left alone"
+    else place_file "$TMP/essay.txt" "essay.txt"; fi
+
+    PERL=/usr/bin/perl
+    [ -x "$PERL" ] || PERL=$(command -v perl 2>/dev/null)
+    get_src "tools/cin2rime.pl" "$TMP/cin2rime.pl"
+    get_src "tables/mscj3.cin" "$TMP/mscj3.cin" "$CIN3_SHA"
+    if "$PERL" "$TMP/cin2rime.pl" "$TMP/mscj3.cin" "$TMP/cangjie3.base.dict.yaml" --essay "$TMP/essay.txt" > "$TMP/conv.log" 2>&1; then
       say "converted table: $(tr '\n' ' ' < "$TMP/conv.log")"
     else
       cat "$TMP/conv.log" >&2
@@ -316,42 +343,28 @@ main() {
     place_file "$TMP/cangjie3.base.dict.yaml" "cangjie3.base.dict.yaml"
   fi
 
-  # ---- optional 5th generation
+  # ---- optional 5th generation table
   if [ "$WITH_C5" = 1 ]; then
-    if [ -f "$RIME_DIR/cangjie5.base.dict.yaml" ]; then
-      say "cangjie5.base.dict.yaml already present."
-    elif [ "$DRY" = 1 ]; then
-      say "DRY: would download $C5BASE_URL"
+    if [ "$DRY" = 1 ]; then
+      say "DRY: would install tables/cangjie5.base.dict.yaml (SHA-256 checked)"
     else
-      download "$C5BASE_URL" "$TMP/cangjie5.base.dict.yaml" "cangjie5.base.dict.yaml (rime-cangjie)"
-      require_min "$TMP/cangjie5.base.dict.yaml" 100000 "cangjie5.base.dict.yaml"
+      get_src "tables/cangjie5.base.dict.yaml" "$TMP/cangjie5.base.dict.yaml" "$CJ5_BASE_SHA"
       place_file "$TMP/cangjie5.base.dict.yaml" "cangjie5.base.dict.yaml"
     fi
   fi
 
-  # ---- language model. The model bundled in Squirrel 1.1.2 has the same name but only 10.5 MB; the
-  # copy in the user folder takes precedence, so the full model is installed here.
+  # ---- language model: always the repository's full model (Squirrel 1.1.2 bundles a 10.5 MB variant with the same
+  # name; the copy in the user folder takes precedence). Size and SHA-256 checked.
   GRAM="$RIME_DIR/zh-hant-t-essay-bgw.gram"
   if [ "$NO_MODEL" = 1 ]; then
     say "skipping language model (--no-model)."
-  elif [ -f "$GRAM" ] && [ "$(file_size "$GRAM")" = "$GRAM_SIZE" ]; then
-    say "language model already present ($GRAM_SIZE bytes)."
+  elif [ -f "$GRAM" ] && [ "$(file_size "$GRAM")" = "$GRAM_SIZE" ] && [ "$(sha256_of "$GRAM")" = "$GRAM_SHA" ]; then
+    say "language model already present ($GRAM_SIZE bytes, SHA-256 ok)."
   elif [ "$DRY" = 1 ]; then
-    say "DRY: would download $GRAM_URL ($GRAM_SIZE bytes) -> $GRAM"
+    say "DRY: would install data/zh-hant-t-essay-bgw.gram ($GRAM_SIZE bytes, SHA-256 checked) -> $GRAM"
   else
-    got=0
-    for u in $GRAM_URL $GRAM_URL2; do
-      say "downloading zh-hant-t-essay-bgw.gram (about 41 MB) from $u"
-      if curl -fL $(progress_flag big) --retry 2 --connect-timeout 20 -o "$TMP/model.gram" "$u"; then
-        n=$(file_size "$TMP/model.gram")
-        if [ "$n" = "$GRAM_SIZE" ]; then got=1; break; fi
-        warn "language model from $u has $n bytes, expected $GRAM_SIZE"
-      else
-        warn "download from $u failed"
-      fi
-    done
-    [ "$got" = 1 ] || die "could not download the language model (use --no-model to skip it; sentence correction is then weaker)"
-    say "model $(checksum_of "$TMP/model.gram")"
+    get_src "data/zh-hant-t-essay-bgw.gram" "$TMP/model.gram" "$GRAM_SHA" big
+    [ "$(file_size "$TMP/model.gram")" = "$GRAM_SIZE" ] || die "the language model has the wrong size (want $GRAM_SIZE)"
     place_file "$TMP/model.gram" "zh-hant-t-essay-bgw.gram"
   fi
 

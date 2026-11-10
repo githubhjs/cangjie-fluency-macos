@@ -1,12 +1,13 @@
+dist/
 build/
 cangjie3.base.dict.yaml
-cangjie5.base.dict.yaml
-*.cin
 .DS_Store
-essay.txt
-*.gram
-mscj3.cin
-# NEVER commit: the license of PIME mscj3.cin is unknown, and the table generated from it inherits that
-.omc/
 *.part
+.omc/
 testenv/
+# generated table (the real tables live in the main repo)
+# big data files belong to the main repo; never commit them here
+*.gram
+*.cin
+essay.txt
+cangjie5.base.dict.yaml
