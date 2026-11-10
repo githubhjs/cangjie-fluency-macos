@@ -135,6 +135,7 @@ check "--fuzzy-default fresh: fuzzy first" test "$(grep -- '- schema:' "$RD/defa
 printf '%s\n' 'patch:' '  schema_list:' '    - schema: cangjie3_fluency' '    - schema: luna_pinyin' > "$W/dc.in"
 new_env fz3; cp "$W/dc.in" "$RD/default.custom.yaml"; run --no-model --no-deploy --offline --fuzzy-default
 check "--fuzzy-default existing list: fuzzy at the top" test "$(grep -- '- schema:' "$RD/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fuzzy-schema:cangjie3_fluency-schema:luna_pinyin"
+check "--fuzzy-default: the closing note names cangjie3_fuzzy as the default" sh -c "printf '%s' \"\$1\" | grep -q 'DEFAULT schema is cangjie3_fuzzy'" _ "$OUT"
 new_env fz4; cp "$W/dc.in" "$RD/default.custom.yaml"; run --no-model --no-deploy --offline
 check "default existing list: fuzzy right after fluency" test "$(grep -- '- schema:' "$RD/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fluency-schema:cangjie3_fuzzy-schema:luna_pinyin"
 new_env fz5; run --no-model --no-deploy --offline --no-fuzzy

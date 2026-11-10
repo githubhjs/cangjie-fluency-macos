@@ -28,7 +28,7 @@ usage() {
 usage: bash install.sh [options]
 
   --rime-dir DIR     Rime user folder (default: $RIME_DIR, else ~/Library/Rime)
-  --ref TAG          version (tag/branch) of githubhjs/cangjie-fluency to download missing files from (default: v0.5.0)
+  --ref TAG          version (tag/branch) of githubhjs/cangjie-fluency to download missing files from (default: v0.5.1)
   --offline          never touch the network: everything must be next to this script (full release zip layout)
   --no-deps          do not install Squirrel when it is missing (that needs sudo and the Squirrel pkg)
   --with-cangjie5    also install the 5th-generation schema cangjie5_fluency (+ cangjie5.base.dict.yaml)
@@ -47,7 +47,7 @@ USAGE
 用法：bash install.sh [選項]
 
   --rime-dir DIR     Rime 使用者資料夾（預設：$RIME_DIR，否則 ~/Library/Rime）
-  --ref TAG          缺少檔案時，從 githubhjs/cangjie-fluency 下載的版本（標籤/分支，預設：v0.5.0）
+  --ref TAG          缺少檔案時，從 githubhjs/cangjie-fluency 下載的版本（標籤/分支，預設：v0.5.1）
   --offline          完全不連網：所有檔案都必須放在本腳本旁邊（完整 release zip 的版面配置）
   --no-deps          Squirrel 不存在時不安裝（安裝需要 sudo 與 Squirrel pkg）
   --with-cangjie5    同時安裝五代方案 cangjie5_fluency（+ cangjie5.base.dict.yaml）
@@ -256,7 +256,7 @@ PERL
 
 main() {
   RIME_DIR="${RIME_DIR:-$HOME/Library/Rime}"
-  REF="${CJF_REF:-v0.5.0}"
+  REF="${CJF_REF:-v0.5.1}"
   WITH_C5=0; NO_FUZZY=0; FUZZY_DEFAULT=0; FUZZY_RANGE=normal; NO_MODEL=0; NO_DEPLOY=0; NO_DEPS=0; OFFLINE=0; DRY=0; UNINSTALL=0
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -484,6 +484,9 @@ NEXT
        grep -h "use grammar" "${TMPDIR%/}"/rime.squirrel/* | tail -3
      沒有「use grammar」那一行 = 模型沒有載入（方案本身仍可使用）。
 NEXT_ZH
+  if [ "$FUZZY_DEFAULT" = 1 ] && [ "$NO_FUZZY" = 0 ]; then
+    say "NOTE: with this install the DEFAULT schema is cangjie3_fuzzy (adjacent-key typo tolerance), so step 1 needs no Ctrl+\` / F4 choice; cangjie3_fluency is the next one in the list." "注意：這次安裝的預設方案是 cangjie3_fuzzy（鄰鍵容錯），所以第 1 步不必再按 Ctrl+\` 或 F4 選方案；cangjie3_fluency 在清單的下一個。"
+  fi
 }
 
 do_uninstall() {
