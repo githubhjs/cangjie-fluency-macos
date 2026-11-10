@@ -1,0 +1,12 @@
+# NEVER commit: the license of PIME mscj3.cin is unknown, and the table generated from it inherits that
+mscj3.cin
+*.cin
+cangjie3.base.dict.yaml
+cangjie5.base.dict.yaml
+*.gram
+*.part
+essay.txt
+build/
+.DS_Store
+.omc/
+testenv/
