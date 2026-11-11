@@ -441,4 +441,5 @@ The Cangjie Sweep Pad is installed by default (a release asset of [githubhjs/can
 
 ## Changelog / 更新紀錄
 
+- **v0.4.1** — Sweep Pad v0.3.0: tolerance for backtracks. / 滑行輸入板 v0.3.0：容許回頭滑行。
 - **v0.4.0** — Sweep Pad added; default on, `--no-sweep` to skip. / 新增倉頡滑行輸入板；預設安裝，加 `--no-sweep` 可略過。
