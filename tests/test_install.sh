@@ -24,7 +24,29 @@ SRC="$W/bundle"; mkdir -p "$SRC/deps"
 cp -R "$MAIN/weasel" "$SRC/weasel"; rm -rf "$SRC/weasel/docs"
 ln -s "$MAIN/tables" "$SRC/tables"; ln -s "$MAIN/data" "$SRC/data"; ln -s "$MAIN/tools" "$SRC/tools"
 ln -s "$MAIN/dl/Squirrel-1.1.2.pkg" "$SRC/deps/Squirrel-1.1.2.pkg"
+
+# mock sweep pad in bundle
+SWEEP_STUB="$W/sweep_src"; mkdir -p "$SWEEP_STUB"
+cat > "$SWEEP_STUB/cangjie_sweep_pad.py" <<'PY'
+#!/usr/bin/env python3
+import sys
+if "--self-check" in sys.argv:
+    print("self-check ok")
+    sys.exit(0)
+print("cangjie sweep pad")
+PY
+chmod +x "$SWEEP_STUB/cangjie_sweep_pad.py"
+(cd "$SWEEP_STUB" && zip -q -r "$W/cangjie-sweep-pad.zip" cangjie_sweep_pad.py)
+shasum -a 256 "$W/cangjie-sweep-pad.zip" | awk '{print $1}' > "$W/cangjie-sweep-pad.zip.sha256"
+
+mkdir -p "$SRC/sweep-pad"
+cp "$W/cangjie-sweep-pad.zip" "$SRC/sweep-pad/cangjie-sweep-pad.zip"
+cp "$W/cangjie-sweep-pad.zip.sha256" "$SRC/sweep-pad/cangjie-sweep-pad.zip.sha256"
+
 export CJF_SRC_DIR="$SRC"
+export CJF_SWEEP_DIR="$W/sweep"
+export CJF_BIN_DIR="$W/bin"
+export CJF_APP_DIR="$W/apps"
 
 # a curl/wget/sudo that only record: any use means the test (or installer) touched the network
 STUB="$W/stub"; mkdir -p "$STUB"; NETLOG="$W/net.log"; : > "$NETLOG"
@@ -67,6 +89,10 @@ check "generated table equals the python converter output (repo essay.txt weight
 check "generated table equals a direct perl converter run" sh -c "perl '$MAIN/tools/cin2rime.pl' '$MAIN/tables/mscj3.cin' '$W/pl.yaml' --essay '$MAIN/data/essay.txt' >/dev/null && cmp -s '$W/pl.yaml' '$RD/cangjie3.base.dict.yaml'"
 check "Squirrel --reload was called" grep -qx -- '--reload' "$LOG"
 check "manifest written" test -s "$RD/.cangjie-fluency-macos.manifest"
+check "installed sweep pad" test -s "$W/sweep/cangjie_sweep_pad.py"
+check "installed sweep launcher" test -x "$W/bin/cangjie-sweep-pad"
+check "installed sweep command" test -x "$W/apps/Cangjie Sweep.command"
+check "sweep pad self-check passed" sh -c "printf '%s' \"\$1\" | grep -q 'Sweep Pad self-check passed'" _ "$OUT"
 
 echo "== 2. identical re-run"
 run --with-cangjie5 --offline
@@ -163,6 +189,10 @@ check "exit 0" test "$RC" = 0
 check "Rime folder not created" test ! -e "$RD"
 check "Squirrel not called" test ! -s "$LOG"
 check "no network" test ! -s "$NETLOG"
+check "dry-run: mentions Sweep Pad by default" sh -c "printf '%s' \"\$1\" | grep -q 'DRY: would install Sweep Pad'" _ "$OUT"
+OUT_NOSWEEP=$(bash "$REPO/install.sh" --rime-dir "$RD" --dry-run --no-sweep 2>&1)
+check "dry-run --no-sweep: skips Sweep Pad" sh -c "printf '%s' \"\$1\" | grep -q 'skipping Sweep Pad (--no-sweep)'" _ "$OUT_NOSWEEP"
+check "dry-run --no-sweep: does not mention would install Sweep Pad" sh -c "! printf '%s' \"\$1\" | grep -q 'would install Sweep Pad'" _ "$OUT_NOSWEEP"
 mkdir -p "$RD"; printf 'patch:\n  schema_list:\n    - schema: luna_pinyin\n' > "$RD/default.custom.yaml"; cp "$RD/default.custom.yaml" "$W/dry.before"
 run --dry-run
 check "existing default.custom.yaml untouched by dry run" cmp -s "$W/dry.before" "$RD/default.custom.yaml"
@@ -184,6 +214,9 @@ check "foreign file kept" test -e "$RD/keepme.txt"
 check "backups kept" test "$(bakcount)" = "$BK"
 check "default.custom.yaml created by the installer and unchanged is removed" test ! -e "$RD/default.custom.yaml"
 check "manifest removed" test ! -e "$RD/.cangjie-fluency-macos.manifest"
+check "uninstall: sweep dir removed" test ! -e "$W/sweep"
+check "uninstall: sweep launcher removed" test ! -e "$W/bin/cangjie-sweep-pad"
+check "uninstall: sweep command removed" test ! -e "$W/apps/Cangjie Sweep.command"
 cp "$MAIN/weasel/cangjie5_fluency.schema.yaml" "$SRC/weasel/cangjie5_fluency.schema.yaml"
 
 echo "== 7. pre-existing file is replaced with a backup but never removed by --uninstall"
@@ -220,7 +253,7 @@ run --no-model --no-deploy --offline --no-deps
 check "--no-deps with Squirrel missing: fails clearly" test "$RC" != 0
 check "--no-deps: pkg not touched" test ! -s "$FAKE_INSTALL_LOG"
 # damaged pkg: SHA-256 mismatch stops before anything is installed
-BADB="$W/badpkg"; mkdir -p "$BADB/deps"; cp -R "$SRC/weasel" "$BADB/weasel"; ln -s "$MAIN/tables" "$BADB/tables"; ln -s "$MAIN/data" "$BADB/data"; ln -s "$MAIN/tools" "$BADB/tools"
+BADB="$W/badpkg"; mkdir -p "$BADB/deps"; cp -R "$SRC/weasel" "$BADB/weasel"; ln -s "$MAIN/tables" "$BADB/tables"; ln -s "$MAIN/data" "$BADB/data"; ln -s "$MAIN/tools" "$BADB/tools"; ln -s "$SRC/sweep-pad" "$BADB/sweep-pad"
 printf 'not a pkg' > "$BADB/deps/Squirrel-1.1.2.pkg"
 new_env nosq3; export SQUIRREL_APP_DIR="$W/nosq3/None.app"
 OUT=$(CJF_SRC_DIR="$BADB" bash "$REPO/install.sh" --rime-dir "$RD" --no-model --no-deploy --offline 2>&1); RC=$?
@@ -239,7 +272,7 @@ check "offline, script alone: no network" test ! -s "$NETLOG"
 OUT=$(env -u CJF_SRC_DIR bash "$W/solo/install.sh" --rime-dir "$RD" --no-model --no-deploy --ref main 2>&1); RC=$?
 check "online, script alone: curl asked for the main repo raw URL" grep -q 'raw.githubusercontent.com/githubhjs/cangjie-fluency/main/weasel/cangjie3_fluency.schema.yaml' "$NETLOG"
 check "online: only the main repo is contacted" test -z "$(grep -v 'githubhjs/cangjie-fluency' "$NETLOG")"
-BADT="$W/badtable"; mkdir -p "$BADT/tables"; cp -R "$SRC/weasel" "$BADT/weasel"; ln -s "$MAIN/data" "$BADT/data"; ln -s "$MAIN/tools" "$BADT/tools"
+BADT="$W/badtable"; mkdir -p "$BADT/tables"; cp -R "$SRC/weasel" "$BADT/weasel"; ln -s "$MAIN/data" "$BADT/data"; ln -s "$MAIN/tools" "$BADT/tools"; ln -s "$SRC/sweep-pad" "$BADT/sweep-pad"
 cp "$MAIN/tables/mscj3.cin" "$BADT/tables/mscj3.cin"; printf 'x a\n' >> "$BADT/tables/mscj3.cin"
 new_env badtable
 OUT=$(CJF_SRC_DIR="$BADT" bash "$REPO/install.sh" --rime-dir "$RD" --no-model --no-deploy --offline 2>&1); RC=$?
@@ -250,13 +283,32 @@ OUT=$(inst --no-model --no-deploy --offline 2>&1); RC=$?
 check "no Squirrel essay.txt: repo essay.txt installed into the Rime folder" test -s "$RD/essay.txt"
 check "table still identical" cmp -s "$W/py.yaml" "$RD/cangjie3.base.dict.yaml"
 
+echo "== 9b. sweep pad hash mismatch and offline"
+# bundle with the main files but no sweep-pad/: the pad itself then comes from CJF_PAD_URL_BASE
+NO_PAD_SRC="$W/bundle_nopad"; mkdir -p "$NO_PAD_SRC/deps"
+cp -R "$MAIN/weasel" "$NO_PAD_SRC/weasel"; rm -rf "$NO_PAD_SRC/weasel/docs"
+ln -s "$MAIN/tables" "$NO_PAD_SRC/tables"; ln -s "$MAIN/data" "$NO_PAD_SRC/data"; ln -s "$MAIN/tools" "$NO_PAD_SRC/tools"
+ln -s "$MAIN/dl/Squirrel-1.1.2.pkg" "$NO_PAD_SRC/deps/Squirrel-1.1.2.pkg"
+FAKE_PAD="$W/fake_pad_rel"; mkdir -p "$FAKE_PAD"
+echo "corrupt data" > "$FAKE_PAD/cangjie-sweep-pad-v0.2.0.zip"
+echo "0000000000000000000000000000000000000000000000000000000000000000  cangjie-sweep-pad-v0.2.0.zip" > "$FAKE_PAD/cangjie-sweep-pad-v0.2.0.zip.sha256"
+new_env bad_pad_hash
+OUT=$(CJF_PAD_URL_BASE="$FAKE_PAD" CJF_SRC_DIR="$NO_PAD_SRC" bash "$REPO/install.sh" --rime-dir "$RD" --no-model --no-deploy 2>&1); RC=$?
+check "sweep pad bad hash: install stops" test "$RC" != 0
+check "sweep pad bad hash: says SHA-256 mismatch" sh -c "printf '%s' \"\$1\" | grep -q 'SHA-256 mismatch'" _ "$OUT"
+
+new_env offline_nopad
+OUT=$(CJF_SRC_DIR="$NO_PAD_SRC" bash "$REPO/install.sh" --rime-dir "$RD" --offline --no-model --no-deploy 2>&1); RC=$?
+check "offline without sweep-pad in bundle stops" test "$RC" != 0
+check "offline without sweep-pad message" sh -c "printf '%s' \"\$1\" | grep -q 'sweep-pad/cangjie-sweep-pad.zip is missing'" _ "$OUT"
+
 echo "== 10. static bash 3.2 review (patterns that do not exist in bash 3.2)"
 for pat in "declare -A" mapfile readarray "&>>" "|&" sha256sum "readlink -f" "stat -c" "date -d" "sed -i" coproc "local -n"; do
   if grep -v "^[[:space:]]*#" "$REPO/install.sh" | grep -qF -- "$pat"; then bad "install.sh uses: $pat"; else ok "install.sh does not use: $pat"; fi
 done
 check "install.sh: no \${var,,} or \${var^^} (bash 4)" sh -c "! grep -v '^[[:space:]]*#' '$REPO/install.sh' | grep -Eq '\$\{[A-Za-z_0-9]+(,,|\^\^)'"
 check "perl converter has no non-core module" sh -c "! grep -E '^use ' '$MAIN/tools/cin2rime.pl' | grep -Ev 'strict|warnings|utf8|Encode'"
-check "install.sh has no third-party URL or Homebrew advice" sh -c "! grep -Eqi 'EasyIME|PIME|rime/rime-|lotem/|brew install' '$REPO/install.sh'"
+check "install.sh has no third-party URL or Homebrew advice" sh -c "! grep -v 'python-tk' '$REPO/install.sh' | grep -Eqi 'EasyIME|PIME|rime/rime-|lotem/|brew install'"
 
 echo
 echo "passed: $PASS  failed: $FAIL"

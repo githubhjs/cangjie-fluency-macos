@@ -37,6 +37,8 @@ usage: bash install.sh [options]
   --fuzzy-default    make the typo-tolerant schema the FIRST (default) one instead of cangjie3_fluency
   --fuzzy-range narrow|normal|wide   how far a wrong key may be from the right one: narrow = left/right only,
                      normal (default) = also the diagonal neighbours, wide = one more ring
+  --no-sweep         do not install the Cangjie Sweep Pad (tkinter gesture input helper)
+  --pad-ref TAG      version (tag/branch) of githubhjs/cangjie-fuzzy-core for Sweep Pad (default: v0.2.0)
   --no-deploy        install files only; do not ask Squirrel to redeploy
   --dry-run          show what would be done; change nothing, download nothing
   --uninstall        remove the files this installer created (backups and your default.custom.yaml are kept)
@@ -56,6 +58,8 @@ USAGE
   --fuzzy-default    把鄰鍵容錯方案排在第一個（預設），而不是 cangjie3_fluency
   --fuzzy-range narrow|normal|wide   打錯的鍵離正確的鍵多遠算數：narrow = 只有左右相鄰，
                      normal（預設）= 再加斜向相鄰，wide = 再多一圈
+  --no-sweep         不安裝倉頡滑行輸入板（tkinter 滑行輸入輔助工具）
+  --pad-ref TAG      從 githubhjs/cangjie-fuzzy-core 下載滑行板時使用的版本（預設：v0.2.0）
   --no-deploy        只安裝檔案；不要求 Squirrel 重新部署
   --dry-run          只顯示會做什麼；不更動、不下載
   --uninstall        移除本安裝程式建立的檔案（備份檔與你的 default.custom.yaml 會保留）
@@ -257,7 +261,9 @@ PERL
 main() {
   RIME_DIR="${RIME_DIR:-$HOME/Library/Rime}"
   REF="${CJF_REF:-v0.5.1}"
-  WITH_C5=0; NO_FUZZY=0; FUZZY_DEFAULT=0; FUZZY_RANGE=normal; NO_MODEL=0; NO_DEPLOY=0; NO_DEPS=0; OFFLINE=0; DRY=0; UNINSTALL=0
+  PAD_REPO="githubhjs/cangjie-fuzzy-core"
+  PAD_REF="${CJF_PAD_REF:-v0.2.0}"
+  WITH_C5=0; NO_FUZZY=0; FUZZY_DEFAULT=0; FUZZY_RANGE=normal; NO_MODEL=0; NO_SWEEP=0; NO_DEPLOY=0; NO_DEPS=0; OFFLINE=0; DRY=0; UNINSTALL=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --rime-dir)       [ $# -ge 2 ] || die "--rime-dir needs a folder" "--rime-dir 需要一個資料夾"; RIME_DIR="$2"; shift ;;
@@ -271,6 +277,9 @@ main() {
       --no-fuzzy)       NO_FUZZY=1 ;;
       --fuzzy-default)  FUZZY_DEFAULT=1 ;;
       --fuzzy-range)    shift; FUZZY_RANGE="${1:-}"; case "$FUZZY_RANGE" in narrow|normal|wide) ;; *) die "--fuzzy-range must be narrow, normal or wide" "--fuzzy-range 只能是 narrow、normal 或 wide" ;; esac ;;
+      --no-sweep)       NO_SWEEP=1 ;;
+      --pad-ref)        [ $# -ge 2 ] || die "--pad-ref needs a tag" "--pad-ref 需要一個標籤"; PAD_REF="$2"; shift ;;
+      --pad-ref=*)      PAD_REF="${1#--pad-ref=}" ;;
       --no-deploy)      NO_DEPLOY=1 ;;
       --dry-run)        DRY=1 ;;
       --uninstall)      UNINSTALL=1 ;;
@@ -280,6 +289,13 @@ main() {
     shift
   done
   [ -n "$RIME_DIR" ] || die "empty Rime folder" "Rime 資料夾是空的"
+  case "$PAD_REF" in *[!A-Za-z0-9._/-]*|"") die "--pad-ref contains unexpected characters" "--pad-ref 含有不允許的字元" ;; esac
+
+  SWEEP_DIR="${CJF_SWEEP_DIR:-$HOME/Library/Application Support/cangjie-sweep}"
+  BIN_DIR="${CJF_BIN_DIR:-$HOME/.local/bin}"
+  APP_DIR="${CJF_APP_DIR:-$HOME/Applications}"
+  SWEEP_LAUNCHER="$BIN_DIR/cangjie-sweep-pad"
+  SWEEP_COMMAND="$APP_DIR/Cangjie Sweep.command"
 
   SQUIRREL_APP="${SQUIRREL_APP_DIR:-/Library/Input Methods/Squirrel.app}"
   RAW_BASE="https://raw.githubusercontent.com/githubhjs/cangjie-fluency/$REF"
@@ -317,6 +333,30 @@ main() {
   PERL=/usr/bin/perl
   [ -x "$PERL" ] || PERL=$(command -v perl 2>/dev/null)
   [ -n "$PERL" ] && [ -x "$PERL" ] || die "perl not found (macOS ships /usr/bin/perl)" "找不到 perl（macOS 內建 /usr/bin/perl）"
+
+  find_python() {
+    if [ -n "${CJF_PYTHON:-}" ] && [ -x "$CJF_PYTHON" ]; then printf '%s' "$CJF_PYTHON"; return 0; fi
+    # prefer the first python3 that can import tkinter (Homebrew python often lacks it); else the first one found
+    first=""
+    for cand in /opt/homebrew/bin/python3 /usr/bin/python3 /usr/local/bin/python3 "$(command -v python3 2>/dev/null || true)"; do
+      [ -n "$cand" ] && [ -x "$cand" ] || continue
+      [ -n "$first" ] || first="$cand"
+      if "$cand" -c "import tkinter" >/dev/null 2>&1; then printf '%s' "$cand"; return 0; fi
+    done
+    [ -n "$first" ] && { printf '%s' "$first"; return 0; }
+    return 1
+  }
+
+  PY=""
+  if [ "$NO_SWEEP" = 0 ]; then
+    PY=$(find_python || true)
+    if [ -z "$PY" ]; then
+      warn "python3 not found; Sweep Pad requires Python 3.8+ with tkinter." "找不到 python3；倉頡滑行輸入板需要 Python 3.8+ 與 tkinter。"
+    elif ! "$PY" -c "import tkinter" >/dev/null 2>&1; then
+      warn "python3 tkinter module is missing. Install it with: brew install python-tk" "缺少 python3 的 tkinter 模組。請安裝：brew install python-tk"
+    fi
+    say "NOTE: macOS needs Privacy & Security > Accessibility permission for the terminal/Python that runs the pad so key injection works (cannot be granted by script)." "注意：macOS 按鍵模擬需要「隱私權與安全性 > 輔助使用」權限（請授權執行滑行板的終端機或 Python，無法由腳本代為開啟）。"
+  fi
 
   # ---- Squirrel (the engine). Present = left alone. Missing = the unmodified upstream pkg from the main repo's
   # release deps-v1 (or deps/ in the full zip), SHA-256 checked, installed with the macOS installer (sudo).
@@ -463,6 +503,133 @@ main() {
     warn "Squirrel executable not found; deploy by hand: menu bar icon > Deploy." "找不到 Squirrel 執行檔；請手動部署：選單列圖示 > Deploy。"
   fi
 
+  # ---- Cangjie Sweep Pad
+  SWEEP_CHECK_OK=0
+  if [ "$NO_SWEEP" = 0 ]; then
+    if [ "$DRY" = 1 ]; then
+      say "DRY: would install Sweep Pad $PAD_REF to $SWEEP_DIR" "試跑：將會安裝倉頡滑行輸入板 $PAD_REF 到 $SWEEP_DIR"
+      say "DRY: would create launcher $SWEEP_LAUNCHER" "試跑：將會建立啟動器 $SWEEP_LAUNCHER"
+      say "DRY: would create command $SWEEP_COMMAND" "試跑：將會建立雙擊執行檔 $SWEEP_COMMAND"
+      say "DRY: would run self-check: python3 cangjie_sweep_pad.py --self-check" "試跑：將會執行自我檢查：python3 cangjie_sweep_pad.py --self-check"
+    else
+      pad_zip="$TMP/cangjie-sweep-pad.zip"
+      pad_sha="$TMP/cangjie-sweep-pad.zip.sha256"
+      expected_pad_sha=""
+      pad_bundle_zip=""
+      pad_bundle_sha=""
+
+      if [ -n "$SRC_LOCAL" ] && [ -f "$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip" ]; then
+        pad_bundle_zip="$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip"
+        if [ -f "$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip.sha256" ]; then
+          pad_bundle_sha="$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip.sha256"
+        fi
+      fi
+
+      if [ -n "$pad_bundle_zip" ]; then
+        say "using Sweep Pad from bundle: $pad_bundle_zip" "使用完整包隨附的滑行板：$pad_bundle_zip"
+        cp "$pad_bundle_zip" "$pad_zip" || die "cannot copy $pad_bundle_zip" "無法複製 $pad_bundle_zip"
+        if [ -n "$pad_bundle_sha" ]; then
+          expected_pad_sha=$(awk '{print $1}' "$pad_bundle_sha")
+        fi
+      elif [ "$OFFLINE" = 1 ]; then
+        die "--offline: sweep-pad/cangjie-sweep-pad.zip is missing from the bundle next to install.sh" "--offline：install.sh 旁邊的完整包裡缺少 sweep-pad/cangjie-sweep-pad.zip"
+      else
+        pad_base="${CJF_PAD_URL_BASE:-https://github.com/$PAD_REPO/releases/download/$PAD_REF}"
+        pad_zip_name="cangjie-sweep-pad-$PAD_REF.zip"
+        pad_sha_name="cangjie-sweep-pad-$PAD_REF.zip.sha256"
+        say "downloading Sweep Pad $PAD_REF from $pad_base" "下載倉頡滑行輸入板 $PAD_REF：$pad_base"
+        if [ -d "$pad_base" ]; then
+          [ -f "$pad_base/$pad_zip_name" ] || die "$pad_base/$pad_zip_name not found" "找不到 $pad_base/$pad_zip_name"
+          [ -f "$pad_base/$pad_sha_name" ] || die "$pad_base/$pad_sha_name not found" "找不到 $pad_base/$pad_sha_name"
+          cp "$pad_base/$pad_zip_name" "$pad_zip"
+          cp "$pad_base/$pad_sha_name" "$pad_sha"
+        else
+          download "$pad_base/$pad_zip_name" "$pad_zip" "$pad_zip_name" big
+          download "$pad_base/$pad_sha_name" "$pad_sha" "$pad_sha_name"
+        fi
+        expected_pad_sha=$(awk '{print $1}' "$pad_sha")
+      fi
+
+      if [ -n "$expected_pad_sha" ]; then
+        verify_sha "$pad_zip" "$expected_pad_sha" "cangjie-sweep-pad ($PAD_REF)"
+      fi
+
+      extract_dir="$TMP/sweep_extract"
+      mkdir -p "$extract_dir"
+      if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$pad_zip" -d "$extract_dir" || die "failed to extract $pad_zip" "解壓縮失敗：$pad_zip"
+      elif [ -n "$PY" ] && [ -x "$PY" ]; then
+        "$PY" -m zipfile -e "$pad_zip" "$extract_dir" || die "failed to extract $pad_zip" "解壓縮失敗：$pad_zip"
+      else
+        die "unzip or python3 required to extract Sweep Pad" "需要 unzip 或 python3 以解壓滑行板"
+      fi
+
+      [ -f "$extract_dir/cangjie_sweep_pad.py" ] || die "cangjie_sweep_pad.py not found in zip" "zip 內找不到 cangjie_sweep_pad.py"
+
+      mkdir -p "$SWEEP_DIR" "$BIN_DIR" "$APP_DIR"
+
+      dest_py="$SWEEP_DIR/cangjie_sweep_pad.py"
+      if [ -f "$dest_py" ] && cmp -s "$extract_dir/cangjie_sweep_pad.py" "$dest_py"; then
+        say "up to date: cangjie_sweep_pad.py" "已是最新：cangjie_sweep_pad.py"
+      else
+        if [ -f "$dest_py" ]; then
+          b=$(backup_file "$dest_py")
+          say "backed up cangjie_sweep_pad.py -> $(basename "$b")" "已備份 cangjie_sweep_pad.py -> $(basename "$b")"
+        fi
+        cp -p "$extract_dir/cangjie_sweep_pad.py" "$dest_py"
+        chmod +x "$dest_py"
+        say "installed: cangjie_sweep_pad.py" "已安裝：cangjie_sweep_pad.py"
+      fi
+
+      for extra in "$extract_dir"/*; do
+        [ -e "$extra" ] || continue
+        [ "$(basename "$extra")" != "cangjie_sweep_pad.py" ] || continue
+        cp -Rp "$extra" "$SWEEP_DIR/"
+      done
+
+      py_runner="${PY:-/usr/bin/env python3}"
+      cat > "$TMP/launcher.sh" <<LAUNCHER_EOF
+#!/bin/bash
+exec "$py_runner" "$dest_py" "\$@"
+LAUNCHER_EOF
+      if [ -f "$SWEEP_LAUNCHER" ] && cmp -s "$TMP/launcher.sh" "$SWEEP_LAUNCHER"; then
+        say "up to date: $SWEEP_LAUNCHER" "已是最新：$SWEEP_LAUNCHER"
+      else
+        cp "$TMP/launcher.sh" "$SWEEP_LAUNCHER"
+        chmod +x "$SWEEP_LAUNCHER"
+        say "installed launcher: $SWEEP_LAUNCHER" "已安裝啟動器：$SWEEP_LAUNCHER"
+      fi
+
+      cat > "$TMP/command.sh" <<CMD_EOF
+#!/bin/bash
+exec "$py_runner" "$dest_py" "\$@"
+CMD_EOF
+      if [ -f "$SWEEP_COMMAND" ] && cmp -s "$TMP/command.sh" "$SWEEP_COMMAND"; then
+        say "up to date: $SWEEP_COMMAND" "已是最新：$SWEEP_COMMAND"
+      else
+        cp "$TMP/command.sh" "$SWEEP_COMMAND"
+        chmod +x "$SWEEP_COMMAND"
+        say "installed command: $SWEEP_COMMAND" "已安裝雙擊執行檔：$SWEEP_COMMAND"
+      fi
+
+      if [ -f "$MANIFEST" ]; then
+        printf '0 0 @sweep-installed\n0 0 @sweep-dir:%s\n0 0 @sweep-launcher:%s\n0 0 @sweep-command:%s\n' \
+          "$SWEEP_DIR" "$SWEEP_LAUNCHER" "$SWEEP_COMMAND" >> "$MANIFEST"
+      fi
+
+      if [ -n "$PY" ] && [ -x "$PY" ]; then
+        if "$PY" "$dest_py" --self-check > "$TMP/self-check.log" 2>&1; then
+          SWEEP_CHECK_OK=1
+          say "Sweep Pad self-check passed." "倉頡滑行輸入板自我檢查通過。"
+        else
+          warn "Sweep Pad self-check reported warnings: $(tr '\n' ' ' < "$TMP/self-check.log")" "滑行板自我檢查有警告：$(tr '\n' ' ' < "$TMP/self-check.log")"
+        fi
+      fi
+    fi
+  else
+    say "skipping Sweep Pad (--no-sweep)." "略過倉頡滑行輸入板（--no-sweep）。"
+  fi
+
   if [ "$DRY" = 1 ]; then say "DRY RUN finished; nothing was changed." "試跑結束；沒有更動任何東西。"; return 0; fi
   cat <<'NEXT'
 
@@ -487,6 +654,13 @@ NEXT_ZH
   if [ "$FUZZY_DEFAULT" = 1 ] && [ "$NO_FUZZY" = 0 ]; then
     say "NOTE: with this install the DEFAULT schema is cangjie3_fuzzy (adjacent-key typo tolerance), so step 1 needs no Ctrl+\` / F4 choice; cangjie3_fluency is the next one in the list." "注意：這次安裝的預設方案是 cangjie3_fuzzy（鄰鍵容錯），所以第 1 步不必再按 Ctrl+\` 或 F4 選方案；cangjie3_fluency 在清單的下一個。"
   fi
+  if [ "$NO_SWEEP" = 0 ]; then
+    if [ "$SWEEP_CHECK_OK" = 1 ]; then
+      say "Sweep Pad: ready at $SWEEP_DIR (launcher: $SWEEP_LAUNCHER, command: $SWEEP_COMMAND). Self-check: passed." "倉頡滑行輸入板：已就緒於 $SWEEP_DIR（啟動器：$SWEEP_LAUNCHER，雙擊執行檔：$SWEEP_COMMAND）。自我檢查：通過。"
+    else
+      say "Sweep Pad: installed at $SWEEP_DIR (launcher: $SWEEP_LAUNCHER, command: $SWEEP_COMMAND). Self-check had issues (see warnings above)." "倉頡滑行輸入板：已安裝於 $SWEEP_DIR（啟動器：$SWEEP_LAUNCHER，雙擊執行檔：$SWEEP_COMMAND）。自我檢查有異常（見上方警告）。"
+    fi
+  fi
 }
 
 do_uninstall() {
@@ -495,8 +669,15 @@ do_uninstall() {
     return 0
   fi
   local crc size name cur
+  local has_sweep=0 s_dir="" s_launcher="" s_cmd=""
   while read -r crc size name; do
     [ -n "$name" ] || continue
+    case "$name" in
+      @sweep-installed) has_sweep=1; continue ;;
+      @sweep-dir:*) s_dir="${name#@sweep-dir:}"; continue ;;
+      @sweep-launcher:*) s_launcher="${name#@sweep-launcher:}"; continue ;;
+      @sweep-command:*) s_cmd="${name#@sweep-command:}"; continue ;;
+    esac
     if [ ! -f "$RIME_DIR/$name" ]; then say "already gone: $name" "已不存在：$name"; continue; fi
     cur=$(cksum < "$RIME_DIR/$name" | awk '{print $1 " " $2}')
     if [ "$cur" != "$crc $size" ]; then
@@ -506,6 +687,19 @@ do_uninstall() {
     if [ "$DRY" = 1 ]; then say "DRY: would remove $name" "試跑：將會移除 $name"
     else rm "$RIME_DIR/$name" && say "removed $name" "已移除 $name"; fi
   done < "$MANIFEST"
+  if [ "$has_sweep" = 1 ]; then
+    s_dir="${s_dir:-$SWEEP_DIR}"
+    s_launcher="${s_launcher:-$SWEEP_LAUNCHER}"
+    s_cmd="${s_cmd:-$SWEEP_COMMAND}"
+    if [ "$DRY" = 1 ]; then
+      say "DRY: would remove Sweep Pad: $s_dir, $s_launcher, $s_cmd" "試跑：將會移除倉頡滑行輸入板：$s_dir、$s_launcher、$s_cmd"
+    else
+      [ ! -d "$s_dir" ] || rm -rf "$s_dir"
+      [ ! -f "$s_launcher" ] || rm -f "$s_launcher"
+      [ ! -f "$s_cmd" ] || rm -f "$s_cmd"
+      say "removed Sweep Pad ($s_dir, $s_launcher, $s_cmd)" "已移除倉頡滑行輸入板（$s_dir、$s_launcher、$s_cmd）"
+    fi
+  fi
   if [ "$DRY" != 1 ]; then rm "$MANIFEST"; fi
   say "backups (*.bak-*) were kept." "備份檔（*.bak-*）已保留。"
   if [ -f "$RIME_DIR/default.custom.yaml" ] && grep -q 'cangjie[35]_fluency' "$RIME_DIR/default.custom.yaml"; then

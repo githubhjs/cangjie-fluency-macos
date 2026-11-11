@@ -72,7 +72,7 @@ The zip holds the installer, schema files, tables, word list, the language model
 
 選項：`--offline`（不連網；檔案必須放在 `install.sh` 旁邊）、`--no-deps`（缺 Squirrel 時不安裝它）、
 `--rime-dir DIR`（預設 `~/Library/Rime`，或 `$RIME_DIR`）、`--ref TAG`（缺少的檔案要從主倉庫哪個版本下載，
-預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-deploy`、`--dry-run`、`--uninstall`。
+預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-sweep`（不安裝滑行板）、`--pad-ref TAG`（滑行板版本標籤，預設 `v0.1.0`）、`--no-deploy`、`--dry-run`、`--uninstall`。
 
 安裝腳本只需要 bash、`/usr/bin/perl`、awk，以及（沒有 `--offline` 時）curl，這些 macOS 都內建。它會：
 
@@ -114,7 +114,7 @@ bash install.sh
 
 Options: `--offline` (no network; files must be next to `install.sh`), `--no-deps` (do not install Squirrel when it is missing),
 `--rime-dir DIR` (default `~/Library/Rime`, or `$RIME_DIR`), `--ref TAG` (version of the main repo to download missing files
-from, default `v0.5.1`), `--with-cangjie5`, `--no-model`, `--no-deploy`, `--dry-run`, `--uninstall`.
+from, default `v0.5.1`), `--with-cangjie5`, `--no-model`, `--no-sweep` (skip Sweep Pad), `--pad-ref TAG` (Sweep Pad version, default `v0.1.0`), `--no-deploy`, `--dry-run`, `--uninstall`.
 
 The installer needs only bash, `/usr/bin/perl`, awk and (unless `--offline`) curl, all of which ship with macOS. It:
 
@@ -356,7 +356,7 @@ bash install.sh
 並只在你現有的 `schema_list` 最前面插入 `- schema: cangjie3_fluency`；沒有 `schema_list` 就不動它，只告訴你要加什麼）→ 請 Squirrel 重新部署。
 重複執行是安全的：內容相同的檔案不會重寫、不會備份。
 
-選項：`--offline`、`--no-deps`、`--rime-dir DIR`、`--ref TAG`（預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-deploy`、`--dry-run`、`--uninstall`。
+選項：`--offline`、`--no-deps`、`--rime-dir DIR`、`--ref TAG`（預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-sweep`、`--pad-ref TAG`（預設 `v0.1.0`）、`--no-deploy`、`--dry-run`、`--uninstall`。
 
 **第一次裝好 Squirrel 之後要手動加入輸入法**：系統設定 > 鍵盤 > 文字輸入 > 輸入方式 > 編輯… > `+` > 中文（繁體）> Squirrel（鼠鬚管）。
 在 macOS 26.5.2 上用指令註冊會顯示成功但選單裡不會出現，所以手動加入這一步是必要的。（Squirrel 官方說明：只有初次安裝後在部分應用程式打不出字時，才需要登出再登入。）
@@ -420,3 +420,25 @@ Squirrel（GPL-3.0）由 Rime 專案開發；完整包與 `deps-v1` release 中�
 The adjacent-key schema `cangjie3_fuzzy` (and `cangjie5_fuzzy` with Cangjie 5) is installed too, listed second; `cangjie3_fluency` stays the default. When one key is wrong and it is a physical neighbour (`yhmbv` for `yhmbc`) the intended character is offered as well, and exact candidates always come first.
 Options: `--no-fuzzy` skip it; `--fuzzy-range narrow|normal|wide` range; `--fuzzy-default` list it first.
 To make it the default schema (no Ctrl+` / F4 needed) use the separate project **cangjie-fuzzy-macos** (it contains the full cj*fluency too; one-line install). Evidence for the defaults: the DEFAULTS.md linked above.
+
+## Cangjie Sweep Pad / 倉頡滑行輸入板
+
+預設會安裝倉頡滑行輸入板（Cangjie Sweep Pad，來自 [githubhjs/cangjie-fuzzy-core](https://github.com/githubhjs/cangjie-fuzzy-core) 的 release 資產 `cangjie-sweep-pad-<PadRef>.zip`）：
+- 安裝位置：`~/Library/Application Support/cangjie-sweep`（包含 `cangjie_sweep_pad.py`）。
+- 啟動程式：命令列啟動器 `~/.local/bin/cangjie-sweep-pad`，以及可從 Finder 雙擊執行的應用程式檔 `~/Applications/Cangjie Sweep.command`。
+- Python 環境：需要 Python 3.8+ 與 `tkinter`（偏好 `/opt/homebrew/bin/python3` 或 `/usr/bin/python3`；若缺少 tkinter 請執行 `brew install python-tk`）。
+- **macOS 權限要求**：macOS 需要「系統設定 > 隱私權與安全性 > 輔助使用」權限以進行按鍵模擬，請手動勾選授權執行滑行板的終端機（Terminal）或 Python，此權限無法由腳本代為開啟。
+- 安裝後會自動執行 `python3 cangjie_sweep_pad.py --self-check`。
+- 選項：使用 `--no-sweep` 可略過安裝滑行板；`--pad-ref TAG` 可指定下載版本。執行 `--uninstall` 會一併移除滑行板資料夾、啟動器與 `.command` 檔案。
+
+The Cangjie Sweep Pad is installed by default (a release asset of [githubhjs/cangjie-fuzzy-core](https://github.com/githubhjs/cangjie-fuzzy-core), `cangjie-sweep-pad-<PadRef>.zip`):
+- Install directory: `~/Library/Application Support/cangjie-sweep` (contains `cangjie_sweep_pad.py`).
+- Launcher: command-line launcher `~/.local/bin/cangjie-sweep-pad`, plus a double-clickable `~/Applications/Cangjie Sweep.command`.
+- Python: requires Python 3.8+ with `tkinter` (prefers `/opt/homebrew/bin/python3` or `/usr/bin/python3`; if tkinter is missing run `brew install python-tk`).
+- **macOS Permission**: macOS requires Accessibility permission for key injection: grant permission to Terminal (or Python) in System Settings > Privacy & Security > Accessibility. This cannot be granted by script.
+- Runs `python3 cangjie_sweep_pad.py --self-check` after installation to verify the environment.
+- Options: pass `--no-sweep` to skip installing the pad; pass `--pad-ref TAG` to specify a release tag. Running `--uninstall` removes the pad directory, launcher, and `.command` file.
+
+## Changelog / 更新紀錄
+
+- **v0.4.0** — Sweep Pad added; default on, `--no-sweep` to skip. / 新增倉頡滑行輸入板；預設安裝，加 `--no-sweep` 可略過。
