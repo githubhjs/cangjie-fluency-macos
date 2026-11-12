@@ -31,7 +31,7 @@ done
 
 # fetch and verify Sweep Pad for the full offline bundle
 PAD_REF="$(grep '^PAD_REF=' "$HERE/install.sh" | head -n1 | cut -d'"' -f2)"
-PAD_REF="${CJF_PAD_REF:-${PAD_REF:-v0.4.1}}"
+PAD_REF="${CJF_PAD_REF:-${PAD_REF:-v0.5.0}}"
 PAD_STAGE="$STAGE/sweep-pad"
 mkdir -p "$PAD_STAGE"
 PAD_URL_BASE="${CJF_PAD_URL_BASE:-https://github.com/githubhjs/cangjie-fuzzy-core/releases/download/$PAD_REF}"

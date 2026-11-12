@@ -72,7 +72,7 @@ The zip holds the installer, schema files, tables, word list, the language model
 
 選項：`--offline`（不連網；檔案必須放在 `install.sh` 旁邊）、`--no-deps`（缺 Squirrel 時不安裝它）、
 `--rime-dir DIR`（預設 `~/Library/Rime`，或 `$RIME_DIR`）、`--ref TAG`（缺少的檔案要從主倉庫哪個版本下載，
-預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-sweep`（不安裝滑行板）、`--pad-ref TAG`（滑行板版本標籤，預設 `v0.4.1`）、`--no-deploy`、`--dry-run`、`--uninstall`。
+預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-sweep`（不安裝滑行板）、`--pad-ref TAG`（滑行板版本標籤，預設 `v0.5.0`）、`--no-deploy`、`--dry-run`、`--uninstall`。
 
 安裝腳本只需要 bash、`/usr/bin/perl`、awk，以及（沒有 `--offline` 時）curl，這些 macOS 都內建。它會：
 
@@ -114,7 +114,7 @@ bash install.sh
 
 Options: `--offline` (no network; files must be next to `install.sh`), `--no-deps` (do not install Squirrel when it is missing),
 `--rime-dir DIR` (default `~/Library/Rime`, or `$RIME_DIR`), `--ref TAG` (version of the main repo to download missing files
-from, default `v0.5.1`), `--with-cangjie5`, `--no-model`, `--no-sweep` (skip Sweep Pad), `--pad-ref TAG` (Sweep Pad version, default `v0.4.1`), `--no-deploy`, `--dry-run`, `--uninstall`.
+from, default `v0.5.1`), `--with-cangjie5`, `--no-model`, `--no-sweep` (skip Sweep Pad), `--pad-ref TAG` (Sweep Pad version, default `v0.5.0`), `--no-deploy`, `--dry-run`, `--uninstall`.
 
 The installer needs only bash, `/usr/bin/perl`, awk and (unless `--offline`) curl, all of which ship with macOS. It:
 
@@ -356,7 +356,7 @@ bash install.sh
 並只在你現有的 `schema_list` 最前面插入 `- schema: cangjie3_fluency`；沒有 `schema_list` 就不動它，只告訴你要加什麼）→ 請 Squirrel 重新部署。
 重複執行是安全的：內容相同的檔案不會重寫、不會備份。
 
-選項：`--offline`、`--no-deps`、`--rime-dir DIR`、`--ref TAG`（預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-sweep`、`--pad-ref TAG`（預設 `v0.4.1`）、`--no-deploy`、`--dry-run`、`--uninstall`。
+選項：`--offline`、`--no-deps`、`--rime-dir DIR`、`--ref TAG`（預設 `v0.5.1`）、`--with-cangjie5`、`--no-model`、`--no-sweep`、`--pad-ref TAG`（預設 `v0.5.0`）、`--no-deploy`、`--dry-run`、`--uninstall`。
 
 **第一次裝好 Squirrel 之後要手動加入輸入法**：系統設定 > 鍵盤 > 文字輸入 > 輸入方式 > 編輯… > `+` > 中文（繁體）> Squirrel（鼠鬚管）。
 在 macOS 26.5.2 上用指令註冊會顯示成功但選單裡不會出現，所以手動加入這一步是必要的。（Squirrel 官方說明：只有初次安裝後在部分應用程式打不出字時，才需要登出再登入。）
@@ -441,6 +441,7 @@ The Cangjie Sweep Pad is installed by default (a release asset of [githubhjs/can
 
 ## Changelog / 更新紀錄
 
+- **v0.4.4** — Sweep Pad v0.5.0: optional `--mode commit` types the clicked candidate (Linux/macOS), default unchanged. / 滑行輸入板 v0.5.0：可選的 `--mode commit` 會直接輸入點選的候選字（Linux/macOS），預設行為不變。
 - **v0.4.3** — Sweep Pad v0.4.1: candidate row no longer resizes, the sweep trail stays visible. / 滑行輸入板 v0.4.1：候選列不再變高，滑行軌跡不會消失。
 - **v0.4.2** — Sweep Pad v0.4.0: single-character backtrack slips decode correctly (decode_auto), word floor 1000. / 滑行輸入板 v0.4.0：單字回頭滑行也能正確解碼（decode_auto），詞頻下限 1000。
 - **v0.4.1** — Sweep Pad v0.3.0: tolerance for backtracks. / 滑行輸入板 v0.3.0：容許回頭滑行。
