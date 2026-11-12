@@ -290,8 +290,8 @@ cp -R "$MAIN/weasel" "$NO_PAD_SRC/weasel"; rm -rf "$NO_PAD_SRC/weasel/docs"
 ln -s "$MAIN/tables" "$NO_PAD_SRC/tables"; ln -s "$MAIN/data" "$NO_PAD_SRC/data"; ln -s "$MAIN/tools" "$NO_PAD_SRC/tools"
 ln -s "$MAIN/dl/Squirrel-1.1.2.pkg" "$NO_PAD_SRC/deps/Squirrel-1.1.2.pkg"
 FAKE_PAD="$W/fake_pad_rel"; mkdir -p "$FAKE_PAD"
-echo "corrupt data" > "$FAKE_PAD/cangjie-sweep-pad-v0.3.0.zip"
-echo "0000000000000000000000000000000000000000000000000000000000000000  cangjie-sweep-pad-v0.3.0.zip" > "$FAKE_PAD/cangjie-sweep-pad-v0.3.0.zip.sha256"
+echo "corrupt data" > "$FAKE_PAD/cangjie-sweep-pad-v0.4.0.zip"
+echo "0000000000000000000000000000000000000000000000000000000000000000  cangjie-sweep-pad-v0.4.0.zip" > "$FAKE_PAD/cangjie-sweep-pad-v0.4.0.zip.sha256"
 new_env bad_pad_hash
 OUT=$(CJF_PAD_URL_BASE="$FAKE_PAD" CJF_SRC_DIR="$NO_PAD_SRC" bash "$REPO/install.sh" --rime-dir "$RD" --no-model --no-deploy 2>&1); RC=$?
 check "sweep pad bad hash: install stops" test "$RC" != 0
