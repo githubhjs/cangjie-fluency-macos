@@ -38,7 +38,7 @@ usage: bash install.sh [options]
   --fuzzy-range narrow|normal|wide   how far a wrong key may be from the right one: narrow = left/right only,
                      normal (default) = also the diagonal neighbours, wide = one more ring
   --no-sweep         do not install the Cangjie Sweep Pad (tkinter gesture input helper)
-  --pad-ref TAG      version (tag/branch) of githubhjs/cangjie-fuzzy-core for Sweep Pad (default: v0.4.0)
+  --pad-ref TAG      version (tag/branch) of githubhjs/cangjie-fuzzy-core for Sweep Pad (default: v0.4.1)
   --no-deploy        install files only; do not ask Squirrel to redeploy
   --dry-run          show what would be done; change nothing, download nothing
   --uninstall        remove the files this installer created (backups and your default.custom.yaml are kept)
@@ -59,7 +59,7 @@ USAGE
   --fuzzy-range narrow|normal|wide   打錯的鍵離正確的鍵多遠算數：narrow = 只有左右相鄰，
                      normal（預設）= 再加斜向相鄰，wide = 再多一圈
   --no-sweep         不安裝倉頡滑行輸入板（tkinter 滑行輸入輔助工具）
-  --pad-ref TAG      從 githubhjs/cangjie-fuzzy-core 下載滑行板時使用的版本（預設：v0.4.0）
+  --pad-ref TAG      從 githubhjs/cangjie-fuzzy-core 下載滑行板時使用的版本（預設：v0.4.1）
   --no-deploy        只安裝檔案；不要求 Squirrel 重新部署
   --dry-run          只顯示會做什麼；不更動、不下載
   --uninstall        移除本安裝程式建立的檔案（備份檔與你的 default.custom.yaml 會保留）
@@ -262,7 +262,7 @@ main() {
   RIME_DIR="${RIME_DIR:-$HOME/Library/Rime}"
   REF="${CJF_REF:-v0.5.1}"
   PAD_REPO="githubhjs/cangjie-fuzzy-core"
-  PAD_REF="${CJF_PAD_REF:-v0.4.0}"
+  PAD_REF="${CJF_PAD_REF:-v0.4.1}"
   WITH_C5=0; NO_FUZZY=0; FUZZY_DEFAULT=0; FUZZY_RANGE=normal; NO_MODEL=0; NO_SWEEP=0; NO_DEPLOY=0; NO_DEPS=0; OFFLINE=0; DRY=0; UNINSTALL=0
   while [ $# -gt 0 ]; do
     case "$1" in
